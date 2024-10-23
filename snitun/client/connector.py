@@ -61,11 +61,9 @@ class ChannelTransport(Transport):
             except MultiplexerTransportClose:
                 raise
             except (SystemExit, KeyboardInterrupt):
-                raise                
+                raise
             except BaseException as exc:
-                self._fatal_error(
-                    exc, "Fatal error: channel.read() call failed."
-                )
+                self._fatal_error(exc, "Fatal error: channel.read() call failed.")
 
             peer_payload_len = len(from_peer)
             try:
@@ -175,7 +173,9 @@ class Connector:
             return ip_address in self._whitelist
         return True
 
-    async def handler(self, multiplexer: Multiplexer, channel: MultiplexerChannel) -> None:
+    async def handler(
+        self, multiplexer: Multiplexer, channel: MultiplexerChannel
+    ) -> None:
         """Handle new connection from SNIProxy."""
         _LOGGER.debug("Receive from %s a request for %s", channel.ip_address)
 
