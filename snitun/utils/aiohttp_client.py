@@ -64,7 +64,7 @@ class SniTunClientAioHttp:
             whitelist,
             endpoint_connection_error_callback=endpoint_connection_error_callback,
         )
-        _LOGGER.debug("AioHTTP snitun client started")
+        _LOGGER.info("AioHTTP snitun client started")
 
     async def stop(self, *, wait: bool = False) -> None:
         """
