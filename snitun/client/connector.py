@@ -27,13 +27,11 @@ class ChannelTransport(Transport):
         self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel
     ) -> None:
         """Initialize ChannelTransport."""
-        self._ip_address = channel.ip_address
         self._channel = channel
         self._loop = loop
-        self._protocol = None
-        self._paused = False
-        self._pause_future = None
-        super().__init__(extra={"peername": (str(self._ip_address), 0)})
+        self._protocol: asyncio.Protocol | None = None
+        self._pause_future: asyncio.Future[None] | None = None
+        super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
     def get_protocol(self) -> asyncio.Protocol:
         """Return the protocol."""
