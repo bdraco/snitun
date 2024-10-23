@@ -3,14 +3,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
-from contextlib import suppress
 import logging
-import socket
 import ssl
 from typing import Any
 
-from aiohttp.web import AppRunner, SockSite
-import async_timeout
+from aiohttp.web import AppRunner
 
 from ..client.client_peer import ClientPeer
 from ..client.connector import Connector
