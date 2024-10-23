@@ -59,9 +59,11 @@ class ChannelTransport(Transport):
             except MultiplexerTransportClose:
                 raise
             except (SystemExit, KeyboardInterrupt):
-                raise
+                raise                
             except BaseException as exc:
-                self._fatal_error(exc, "Fatal error: channel.read() call failed.")
+                self._fatal_error(
+                    exc, "Fatal error: channel.read() call failed."
+                )
 
             peer_payload_len = len(from_peer)
             try:
@@ -171,9 +173,7 @@ class Connector:
             return ip_address in self._whitelist
         return True
 
-    async def handler(
-        self, multiplexer: Multiplexer, channel: MultiplexerChannel
-    ) -> None:
+    async def handler(self, multiplexer: Multiplexer, channel: MultiplexerChannel) -> None:
         """Handle new connection from SNIProxy."""
         _LOGGER.debug("Receive from %s a request for %s", channel.ip_address)
 
@@ -185,6 +185,10 @@ class Connector:
 
         transport = ChannelTransport(self._loop, channel)
         request_handler = self._protocol_factory()
+        # Performance: We could avoid the task here if
+        # channel.message_transport feed the protocol directly, i.e.
+        # called the code in the loop in this task and would only queue
+        # the data if the protocol is paused.
         transport_reader_task = asyncio.create_task(transport.start())
         # Open connection to endpoint
         try:
@@ -192,12 +196,12 @@ class Connector:
                 transport, request_handler, self._ssl_context, server_side=True
             )
         except (OSError, SSLError):
-            transport_reader_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await transport_reader_task
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
             _LOGGER.debug("Can't start TLS for %s", channel.id, exc_info=True)
+            transport_reader_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await transport_reader_task
             await multiplexer.delete_channel(channel)
             return
 
