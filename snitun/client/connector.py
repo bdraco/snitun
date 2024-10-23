@@ -2,17 +2,141 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from asyncio import Transport
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
 import ipaddress
 import logging
+from ssl import SSLContext
 from typing import Any
+
+from aiohttp.web import RequestHandler
 
 from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
 
 _LOGGER = logging.getLogger(__name__)
+
+
+
+class ChannelTransport(Transport):
+
+    _start_tls_compatible = True
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel) -> None:
+        self._ip_address = channel.ip_address
+        self._channel = channel
+        self._loop = loop
+        self._protocol = None
+        self._paused = False
+        self._pause_future = None
+        super().__init__(extra={"peername": (str(self._ip_address), 0)})
+
+    def get_protocol(self) -> asyncio.Protocol:
+        _LOGGER.warning("Get protocol: %s", self._protocol)
+        return self._protocol
+
+    def set_protocol(self, protocol: asyncio.Protocol) -> None:
+        _LOGGER.warning("Set protocol: %s", protocol)
+        self._protocol = protocol
+
+    def is_closing(self) -> bool:
+        return False
+
+    def close(self) -> None:
+        pass
+
+    def write(self, data: bytes) -> None:
+        #_LOGGER.warning("Write data: %s", data)
+        self._channel.write_sync(data)
+
+    async def start(self):
+        _LOGGER.warning("Start transport")
+        try:
+            # Process stream from multiplexer
+            while True:
+                if self._pause_future:
+                    _LOGGER.warning("Pause future")
+                    await self._pause_future
+                    _LOGGER.warning("Pause future done")
+                from_peer = await self._channel.read()
+                peer_payload_len = len(from_peer)
+                try:
+                    buf = self._protocol.get_buffer(peer_payload_len)
+                    if not (available_len := len(buf)):
+                        raise RuntimeError("get_buffer() returned an empty buffer")
+                except (SystemExit, KeyboardInterrupt):
+                    raise
+                except BaseException as exc:
+                    self._fatal_error(
+                        exc, "Fatal error: protocol.get_buffer() call failed.")
+                    return
+
+                if available_len < peer_payload_len:
+                    self._fatal_error(
+                        ValueError(), "Fatal error: out of buffer")
+                    return
+
+#                print(['available', available_len])
+#                print(['to_write', to_write])
+#                print(['buf', buf, buf[:]])
+#                print(['from_peer', from_peer, from_peer[:to_write]])
+                try:
+                    buf[:peer_payload_len] = from_peer #[:peer_payload_len]
+                except (BlockingIOError, InterruptedError):
+                    return
+                except (SystemExit, KeyboardInterrupt):
+                    raise
+                except BaseException as exc:
+                    self._fatal_error(exc, "Fatal read error on socket transport")
+                    return
+
+                try:
+                    self._protocol.buffer_updated(peer_payload_len)
+                except (SystemExit, KeyboardInterrupt):
+                    raise
+                except BaseException as exc:
+                    self._fatal_error(
+                        exc, "Fatal error: protocol.buffer_updated() call failed.")
+        except (MultiplexerTransportError, OSError, RuntimeError, Exception):
+            _LOGGER.exception("Transport closed by endpoint for %s", self._channel.id)
+
+    def _force_close(self, exc):
+        _LOGGER.exception("Force close")
+        self._channel.close()
+        self._loop.call_soon(self._protocol.connection_lost, exc)
+
+    def _fatal_error(self, exc, message):
+        _LOGGER.error(message)
+        _LOGGER.exception(exc)
+        self._channel.close()
+        self._loop.call_soon(self._protocol.connection_lost,exc)
+
+    def is_reading(self):
+        """Return True if the transport is receiving."""
+        _LOGGER.warning("Is reading")
+        return self._pause_future is not None
+
+    def pause_reading(self):
+        """Pause the receiving end.
+
+        No data will be passed to the protocol's data_received()
+        method until resume_reading() is called.
+        """
+        _LOGGER.error("Pause reading")
+        self._pause_future = self._loop.create_future()
+
+    def resume_reading(self):
+        """Resume the receiving end.
+
+        Data received will once again be passed to the protocol's
+        data_received() method.
+        """
+        _LOGGER.error("Resume reading")
+        if not self._pause_future.done():
+            self._pause_future.set_result(None)
+        self._pause_future = None
 
 
 class Connector:
@@ -24,6 +148,8 @@ class Connector:
         end_port: int | None=None,
         whitelist: bool=False,
         endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
+        protocol_factory: Any = None,
+        ssl_context: SSLContext = None,
     ) -> None:
         """Initialize Connector."""
         self._loop = asyncio.get_event_loop()
@@ -32,6 +158,8 @@ class Connector:
         self._whitelist = set()
         self._whitelist_enabled = whitelist
         self._endpoint_connection_error_callback = endpoint_connection_error_callback
+        self._protocol_factory: Callable[[], RequestHandler] = protocol_factory
+        self._ssl_context: SSLContext = ssl_context
 
     @property
     def whitelist(self) -> set:
@@ -48,9 +176,6 @@ class Connector:
         self, multiplexer: Multiplexer, channel: MultiplexerChannel,
     ) -> None:
         """Handle new connection from SNIProxy."""
-        from_endpoint = None
-        from_peer = None
-
         _LOGGER.debug(
             "Receive from %s a request for %s", channel.ip_address, self._end_host,
         )
@@ -61,10 +186,17 @@ class Connector:
             await multiplexer.delete_channel(channel)
             return
 
+        transport = ChannelTransport(self._loop, channel)
+        loop = asyncio.get_running_loop()
+        request_handler = self._protocol_factory()
+        reader = asyncio.create_task(transport.start())
         # Open connection to endpoint
         try:
-            reader, writer = await asyncio.open_connection(
-                host=self._end_host, port=self._end_port,
+            new_transport = await loop.start_tls(
+                transport,
+                request_handler,
+                self._ssl_context,
+                server_side=True,
             )
         except OSError:
             _LOGGER.error(
@@ -75,40 +207,14 @@ class Connector:
                 await self._endpoint_connection_error_callback()
             return
 
+        request_handler.connection_made(new_transport)
+        _LOGGER.warning("Connected peer: %s", new_transport.get_extra_info("peername"))
+
         try:
-            # Process stream from multiplexer
-            while not writer.transport.is_closing():
-                if not from_endpoint:
-                    from_endpoint = self._loop.create_task(reader.read(4096))
-                if not from_peer:
-                    from_peer = self._loop.create_task(channel.read())
-
-                # Wait until data need to be processed
-                await asyncio.wait(
-                    [from_endpoint, from_peer], return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                # From proxy
-                if from_endpoint.done():
-                    if from_endpoint.exception():
-                        raise from_endpoint.exception()
-
-                    await channel.write(from_endpoint.result())
-                    from_endpoint = None
-
-                # From peer
-                if from_peer.done():
-                    if from_peer.exception():
-                        raise from_peer.exception()
-
-                    writer.write(from_peer.result())
-                    from_peer = None
-
-                    # Flush buffer
-                    await writer.drain()
+            await reader
 
         except (MultiplexerTransportError, OSError, RuntimeError):
-            _LOGGER.debug("Transport closed by endpoint for %s", channel.id)
+            _LOGGER.exception("Transport closed by endpoint for %s", channel.id)
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
 
@@ -116,19 +222,4 @@ class Connector:
             _LOGGER.debug("Peer close connection for %s", channel.id)
 
         finally:
-            # Cleanup peer reader
-            if from_peer:
-                if not from_peer.done():
-                    from_peer.cancel()
-                else:
-                    # Avoid exception was never retrieved
-                    from_peer.exception()
-
-            # Cleanup endpoint reader
-            if from_endpoint and not from_endpoint.done():
-                from_endpoint.cancel()
-
-            # Close Transport
-            if not writer.transport.is_closing():
-                with suppress(OSError):
-                    writer.close()
+            new_transport.close()

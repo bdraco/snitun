@@ -18,6 +18,7 @@ from ..client.connector import Connector
 _LOGGER = logging.getLogger(__name__)
 
 
+
 class SniTunClientAioHttp:
     """Help to handle a internal aiohttp app runner."""
 
@@ -38,6 +39,8 @@ class SniTunClientAioHttp:
         self._socket.setblocking(False)
         self._socket.bind(("127.0.0.1", 0))
         self._site = SockSite(runner, self._socket, ssl_context=context)
+        self._protocol_factory = runner.server
+        self._ssl_context = context
 
     @property
     def is_connected(self) -> bool:
@@ -69,6 +72,8 @@ class SniTunClientAioHttp:
             port,
             whitelist,
             endpoint_connection_error_callback=endpoint_connection_error_callback,
+            protocol_factory=self._protocol_factory,
+            ssl_context=self._ssl_context,
         )
 
         _LOGGER.info("AioHTTP snitun client started on %s:%s", host, port)
