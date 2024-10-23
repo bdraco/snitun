@@ -74,7 +74,7 @@ class SniTunClientAioHttp:
             wait: wait for the socket to close.
         """
         await self.disconnect()
-        _LOGGER.debug("AioHTTP snitun client closed")
+        _LOGGER.info("AioHTTP snitun client closed")
 
     async def connect(
         self,
@@ -87,18 +87,13 @@ class SniTunClientAioHttp:
         if self._client.is_connected:
             return
         await self._client.start(
-            self._connector,
-            fernet_key,
-            aes_key,
-            aes_iv,
-            throttling=throttling,
+            self._connector, fernet_key, aes_key, aes_iv, throttling=throttling,
         )
-        _LOGGER.debug("AioHTTP snitun client connected to: %s", self._server_name)
+        _LOGGER.info("AioHTTP snitun client connected to: %s", self._server_name)
 
     async def disconnect(self) -> None:
         """Disconnect from SniTun server."""
         if not self._client.is_connected:
             return
-        _LOGGER.debug("AioHTTP snitun client disconnecting from: %s", self._server_name)
         await self._client.stop()
-        _LOGGER.debug("AioHTTP snitun client disconnected from: %s", self._server_name)
+        _LOGGER.info("AioHTTP snitun client disconnected from: %s", self._server_name)
