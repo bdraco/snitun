@@ -26,6 +26,7 @@ class ChannelTransport(Transport):
     def __init__(
         self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel
     ) -> None:
+        """Initialize ChannelTransport."""
         self._ip_address = channel.ip_address
         self._channel = channel
         self._loop = loop
@@ -35,25 +36,34 @@ class ChannelTransport(Transport):
         super().__init__(extra={"peername": (str(self._ip_address), 0)})
 
     def get_protocol(self) -> asyncio.Protocol:
+        """Return the protocol."""
         return self._protocol
 
     def set_protocol(self, protocol: asyncio.Protocol) -> None:
+        """Set the protocol."""
         if not isinstance(protocol, BufferedProtocol):
             raise ValueError("Protocol must be a BufferedProtocol")
         self._protocol = protocol
 
     def is_closing(self) -> bool:
+        """Return True if the transport is closing or closed."""
         return self._channel.closing
 
     def close(self) -> None:
+        """Close the underlying channel."""
         self._channel.close()
 
     def write(self, data: bytes) -> None:
+        """Write data to the channel."""
         if not self._channel.closing:
             self._channel.write_no_wait(data)
 
-    async def start(self):
-        # Process stream from multiplexer
+    async def start(self) -> None:
+        """Start reading from the channel.
+
+        As a future improvement, it would be a bit more efficient to
+        have the channel call this as a callback from channel.message_transport.
+        """
         while True:
             if self._pause_future:
                 await self._pause_future
@@ -110,21 +120,20 @@ class ChannelTransport(Transport):
                     exc, "Fatal error: protocol.buffer_updated() call failed."
                 )
 
-    def _force_close(self, exc):
+    def _force_close(self, exc: Exception) -> None:
         self._channel.close()
-        self.resume_reading()
+        self._release_pause_future()
         self._loop.call_soon(self._protocol.connection_lost, exc)
 
-    def _fatal_error(self, exc, message):
-        self.resume_reading()
+    def _fatal_error(self, exc: Exception, message: str) -> None:
+        self._release_pause_future()
         self._loop.call_soon(self._protocol.connection_lost, exc)
 
-    def is_reading(self):
+    def is_reading(self) -> bool:
         """Return True if the transport is receiving."""
-        _LOGGER.warning("Is reading")
         return self._pause_future is not None
 
-    def pause_reading(self):
+    def pause_reading(self) -> None:
         """Pause the receiving end.
 
         No data will be passed to the protocol's data_received()
@@ -134,13 +143,19 @@ class ChannelTransport(Transport):
             return
         self._pause_future = self._loop.create_future()
 
-    def resume_reading(self):
+    def resume_reading(self) -> None:
         """Resume the receiving end.
 
         Data received will once again be passed to the protocol's
         data_received() method.
         """
+        self._release_pause_future()
 
+    def _release_pause_future(self) -> None:
+        """Release the pause future, if it exists.
+
+        This will ensure that start can continue processing data.
+        """
         if self._pause_future is not None and not self._pause_future.done():
             self._pause_future.set_result(None)
         self._pause_future = None
