@@ -7,7 +7,7 @@ from contextlib import suppress
 import ipaddress
 import logging
 from typing import Any, Callable
-from asyncio import Transport
+from asyncio import Transport, BufferedProtocol
 from aiohttp.web import RequestHandler
 
 from ssl import SSLContext, SSLError
@@ -36,6 +36,8 @@ class ChannelTransport(Transport):
         return self._protocol
 
     def set_protocol(self, protocol: asyncio.Protocol) -> None:
+        if not isinstance(protocol, BufferedProtocol):
+            raise ValueError("Protocol must be a BufferedProtocol")
         self._protocol = protocol
 
     def is_closing(self) -> bool:
