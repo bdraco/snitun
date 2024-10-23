@@ -41,7 +41,7 @@ class ChannelTransport(Transport):
         self._protocol = protocol
 
     def is_closing(self) -> bool:
-        return False
+        return self._channel.closing
 
     def close(self) -> None:
         self._channel.close()
