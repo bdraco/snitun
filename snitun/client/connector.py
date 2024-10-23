@@ -19,6 +19,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ChannelTransport(Transport):
+    """An asyncio.Transport implementation for multiplexer channel."""
+
     _start_tls_compatible = True
 
     def __init__(
