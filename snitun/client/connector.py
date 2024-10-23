@@ -10,7 +10,7 @@ from typing import Any, Callable
 from asyncio import Transport
 from aiohttp.web import RequestHandler
 
-from ssl import SSLContext
+from ssl import SSLContext, SSLError
 from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
@@ -49,59 +49,62 @@ class ChannelTransport(Transport):
             self._channel.write_no_wait(data)
 
     async def start(self):
-        try:
-            # Process stream from multiplexer
-            while True:
-                if self._pause_future:
-                    await self._pause_future
-                try:
-                    from_peer = await self._channel.read()
-                except MultiplexerTransportClose:
-                    break
-                peer_payload_len = len(from_peer)
-                try:
-                    buf = self._protocol.get_buffer(-1)
-                    if not (available_len := len(buf)):
-                        raise RuntimeError("get_buffer() returned an empty buffer")
-                except (SystemExit, KeyboardInterrupt):
-                    raise
-                except BaseException as exc:
-                    self._fatal_error(
-                        exc, "Fatal error: protocol.get_buffer() call failed."
-                    )
-                    return
+        # Process stream from multiplexer
+        while True:
+            if self._pause_future:
+                await self._pause_future
 
-                if available_len < peer_payload_len:
-                    self._fatal_error(
-                        RuntimeError(
-                            "Available buffer is %s, need %s",
-                            available_len,
-                            peer_payload_len,
-                        ),
-                        f"Fatal error: out of buffer need {peer_payload_len} bytes but only have {available_len} bytes",
-                    )
-                    return
+            try:
+                from_peer = await self._channel.read()
+            except MultiplexerTransportClose:
+                raise
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                self._fatal_error(exc, "Fatal error: channel.read() call failed.")
 
-                try:
-                    buf[:peer_payload_len] = from_peer  # [:peer_payload_len]
-                except (BlockingIOError, InterruptedError):
-                    return
-                except (SystemExit, KeyboardInterrupt):
-                    raise
-                except BaseException as exc:
-                    self._fatal_error(exc, "Fatal read error on socket transport")
-                    return
+            peer_payload_len = len(from_peer)
+            try:
+                buf = self._protocol.get_buffer(-1)
+                if not (available_len := len(buf)):
+                    raise RuntimeError("get_buffer() returned an empty buffer")
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                self._fatal_error(
+                    exc, "Fatal error: protocol.get_buffer() call failed."
+                )
+                return
 
-                try:
-                    self._protocol.buffer_updated(peer_payload_len)
-                except (SystemExit, KeyboardInterrupt):
-                    raise
-                except BaseException as exc:
-                    self._fatal_error(
-                        exc, "Fatal error: protocol.buffer_updated() call failed."
-                    )
-        except (MultiplexerTransportError, OSError, RuntimeError, Exception):
-            _LOGGER.exception("Transport closed by endpoint for %s", self._channel.id)
+            if available_len < peer_payload_len:
+                self._fatal_error(
+                    RuntimeError(
+                        "Available buffer is %s, need %s",
+                        available_len,
+                        peer_payload_len,
+                    ),
+                    f"Fatal error: out of buffer need {peer_payload_len} bytes but only have {available_len} bytes",
+                )
+                return
+
+            try:
+                buf[:peer_payload_len] = from_peer
+            except (BlockingIOError, InterruptedError):
+                return
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                self._fatal_error(exc, "Fatal read error on socket transport")
+                return
+
+            try:
+                self._protocol.buffer_updated(peer_payload_len)
+            except (SystemExit, KeyboardInterrupt):
+                raise
+            except BaseException as exc:
+                self._fatal_error(
+                    exc, "Fatal error: protocol.buffer_updated() call failed."
+                )
 
     def _force_close(self, exc):
         self._channel.close()
@@ -169,9 +172,7 @@ class Connector:
         return True
 
     async def handler(
-        self,
-        multiplexer: Multiplexer,
-        channel: MultiplexerChannel,
+        self, multiplexer: Multiplexer, channel: MultiplexerChannel
     ) -> None:
         """Handle new connection from SNIProxy."""
         _LOGGER.debug("Receive from %s a request for %s", channel.ip_address)
@@ -190,7 +191,10 @@ class Connector:
             new_transport = await self._loop.start_tls(
                 transport, request_handler, self._ssl_context, server_side=True
             )
-        except Exception:
+        except (OSError, SSLError):
+            transport_reader_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await transport_reader_task
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
             _LOGGER.debug("Can't start TLS for %s", channel.id, exc_info=True)
@@ -202,7 +206,6 @@ class Connector:
 
         try:
             await transport_reader_task
-
         except (MultiplexerTransportError, OSError, RuntimeError):
             _LOGGER.debug("Transport closed by endpoint for %s", channel.id)
             with suppress(MultiplexerTransportError):
