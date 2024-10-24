@@ -50,6 +50,7 @@ class ChannelTransport(Transport):
     def close(self) -> None:
         """Close the underlying channel."""
         self._channel.close()
+        self._release_pause_future()
 
     def write(self, data: bytes) -> None:
         """Write data to the channel."""
@@ -119,13 +120,23 @@ class ChannelTransport(Transport):
                 )
 
     def _force_close(self, exc: Exception) -> None:
+        """Force close the transport."""
         self._channel.close()
         self._release_pause_future()
-        self._loop.call_soon(self._protocol.connection_lost, exc)
+        if self._protocol is not None:
+            self._loop.call_soon(self._protocol.connection_lost, exc)
 
     def _fatal_error(self, exc: Exception, message: str) -> None:
-        self._release_pause_future()
-        self._loop.call_soon(self._protocol.connection_lost, exc)
+        """Handle a fatal error."""
+        self._loop.call_exception_handler(
+            {
+                "message": message,
+                "exception": exc,
+                "transport": self,
+                "protocol": self._protocol,
+            }
+        )
+        self._force_close(exc)
 
     def is_reading(self) -> bool:
         """Return True if the transport is receiving."""
