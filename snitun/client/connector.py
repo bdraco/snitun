@@ -110,7 +110,7 @@ class ChannelTransport(Transport):
                 return
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(exc, "Fatal read error on socket transport")
                 return
 
@@ -118,7 +118,7 @@ class ChannelTransport(Transport):
                 self._protocol.buffer_updated(peer_payload_len)
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(
                     exc, "Fatal error: protocol.buffer_updated() call failed.",
                 )
