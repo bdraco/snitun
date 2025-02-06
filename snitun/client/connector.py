@@ -9,9 +9,10 @@ import ipaddress
 import logging
 from ssl import SSLContext, SSLError
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from aiohttp.web import RequestHandler
+if TYPE_CHECKING:
+    from aiohttp.web import RequestHandler
 
 from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
@@ -42,7 +43,7 @@ class ChannelTransport(Transport):
     def set_protocol(self, protocol: asyncio.Protocol) -> None:
         """Set the protocol."""
         if not isinstance(protocol, BufferedProtocol):
-            raise ValueError("Protocol must be a BufferedProtocol")
+            raise TypeError("Protocol must be a BufferedProtocol")
         self._protocol = protocol
 
     def is_closing(self) -> bool:
@@ -75,7 +76,7 @@ class ChannelTransport(Transport):
                 raise
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(exc, "Fatal error: channel.read() call failed.")
 
             peer_payload_len = len(from_peer)
@@ -85,7 +86,7 @@ class ChannelTransport(Transport):
                     raise RuntimeError("get_buffer() returned an empty buffer")
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:
+            except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(
                     exc, "Fatal error: protocol.get_buffer() call failed.",
                 )
