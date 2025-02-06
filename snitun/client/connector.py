@@ -6,6 +6,7 @@ from collections.abc import Coroutine
 from contextlib import suppress
 import ipaddress
 import logging
+import sys
 from typing import Any, Callable
 from asyncio import Transport, BufferedProtocol
 from aiohttp.web import RequestHandler
@@ -228,8 +229,16 @@ class Connector:
             # or the connection gets dropped in the middle of the handshake
             _LOGGER.debug("Can't start TLS for %s", channel.id, exc_info=True)
             transport_reader_task.cancel()
-            with suppress(asyncio.CancelledError, Exception):
+            try:
                 await transport_reader_task
+            except asyncio.CancelledError:
+                # Don't swallow cancellation
+                if (
+                    sys.version_info >= (3, 11)
+                    and (current_task := asyncio.current_task())
+                    and current_task.cancelling()
+                ):
+                    raise
             await multiplexer.delete_channel(channel)
             return
 
