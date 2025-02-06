@@ -99,7 +99,8 @@ class ChannelTransport(Transport):
                         available_len,
                         peer_payload_len,
                     ),
-                    f"Fatal error: out of buffer need {peer_payload_len} bytes but only have {available_len} bytes",
+                    f"Fatal error: out of buffer need {peer_payload_len}"
+                    f" bytes but only have {available_len} bytes",
                 )
                 return
 
