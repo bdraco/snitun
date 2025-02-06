@@ -195,7 +195,7 @@ class Connector:
         endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
     ) -> None:
         """Initialize Connector."""
-        self._loop = asyncio.get_event_loop()
+        self._loop = asyncio.get_running_loop()
         self._whitelist = set()
         self._whitelist_enabled = whitelist
         self._endpoint_connection_error_callback = endpoint_connection_error_callback
