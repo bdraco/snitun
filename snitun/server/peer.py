@@ -1,4 +1,5 @@
 """Represent a single Peer."""
+
 from __future__ import annotations
 
 import asyncio
@@ -77,7 +78,9 @@ class Peer:
         return self.multiplexer.is_connected
 
     async def init_multiplexer_challenge(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
     ) -> None:
         """Initialize multiplexer."""
         try:
@@ -103,7 +106,10 @@ class Peer:
 
         # Start Multiplexer
         self._multiplexer = Multiplexer(
-            self._crypto, reader, writer, throttling=self._throttling,
+            self._crypto,
+            reader,
+            writer,
+            throttling=self._throttling,
         )
 
     def wait_disconnect(self) -> Coroutine:

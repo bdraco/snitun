@@ -1,4 +1,5 @@
 """Connector to end resource."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,9 @@ class ChannelTransport(Transport):
     _start_tls_compatible = True
 
     def __init__(
-        self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel,
+        self,
+        loop: asyncio.AbstractEventLoop,
+        channel: MultiplexerChannel,
     ) -> None:
         """Initialize ChannelTransport."""
         self._channel = channel
@@ -88,7 +91,8 @@ class ChannelTransport(Transport):
                 raise
             except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(
-                    exc, "Fatal error: protocol.get_buffer() call failed.",
+                    exc,
+                    "Fatal error: protocol.get_buffer() call failed.",
                 )
                 return
 
@@ -120,7 +124,8 @@ class ChannelTransport(Transport):
                 raise
             except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(
-                    exc, "Fatal error: protocol.buffer_updated() call failed.",
+                    exc,
+                    "Fatal error: protocol.buffer_updated() call failed.",
                 )
 
     def _force_close(self, exc: Exception) -> None:
@@ -204,7 +209,9 @@ class Connector:
         return True
 
     async def handler(
-        self, multiplexer: Multiplexer, channel: MultiplexerChannel,
+        self,
+        multiplexer: Multiplexer,
+        channel: MultiplexerChannel,
     ) -> None:
         """Handle new connection from SNIProxy."""
         _LOGGER.debug("Receive from %s a request", channel.ip_address)
@@ -221,17 +228,31 @@ class Connector:
         # channel.message_transport feed the protocol directly, i.e.
         # called the code in the loop in this task and would only queue
         # the data if the protocol is paused.
-        transport_reader_task = asyncio.create_task(transport.start())
+        if sys.version_info >= (3, 12):
+            transport_reader_task = asyncio.Task(
+                transport.start(),
+                loop=self._loop,
+                eager_start=True,
+                name="TransportReaderTask",
+            )
+        else:
+            transport_reader_task = self._loop.create_task(
+                transport.start(), name="TransportReaderTask",
+            )
         # Open connection to endpoint
         try:
             new_transport = await self._loop.start_tls(
-                transport, request_handler, self._ssl_context, server_side=True,
+                transport,
+                request_handler,
+                self._ssl_context,
+                server_side=True,
             )
         except (OSError, SSLError):
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
             _LOGGER.debug("Can't start TLS for %s", channel.id, exc_info=True)
             transport_reader_task.cancel()
+            await multiplexer.delete_channel(channel)
             try:
                 await transport_reader_task
             except asyncio.CancelledError:
@@ -242,7 +263,10 @@ class Connector:
                     and current_task.cancelling()
                 ):
                     raise
-            await multiplexer.delete_channel(channel)
+            except MultiplexerTransportClose:
+                pass
+            except Exception:
+                _LOGGER.exception("Error in transport_reader_task")
             return
 
         request_handler.connection_made(new_transport)

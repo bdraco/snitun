@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import sys
 
 import async_timeout
 
@@ -31,6 +32,7 @@ class ClientPeer:
         self._loop = asyncio.get_event_loop()
         self._snitun_host = snitun_host
         self._snitun_port = snitun_port or 8080
+        self._run_task: asyncio.Task[None] | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -57,12 +59,15 @@ class ClientPeer:
 
         # Connect to SniTun server
         _LOGGER.debug(
-            "Opening connection to %s:%s", self._snitun_host, self._snitun_port,
+            "Opening connection to %s:%s",
+            self._snitun_host,
+            self._snitun_port,
         )
         try:
             async with async_timeout.timeout(CONNECTION_TIMEOUT):
                 reader, writer = await asyncio.open_connection(
-                    host=self._snitun_host, port=self._snitun_port,
+                    host=self._snitun_host,
+                    port=self._snitun_port,
                 )
         except asyncio.TimeoutError:
             raise SniTunConnectionError(
@@ -117,23 +122,43 @@ class ClientPeer:
         )
 
         # Task a process for pings/cleanups
-        self._loop.create_task(self._handler())
+        if self._run_task:
+            raise RuntimeError("SniTun connection already running")
+        self._run_task = self._loop.create_task(self._handler())
 
     async def stop(self) -> None:
         """Stop connection to SniTun server."""
         if not self._multiplexer:
             raise RuntimeError("No SniTun connection available")
         self._multiplexer.shutdown()
+        run_task = self._run_task
+        run_task.cancel()
+        try:
+            await run_task
+        except Exception:
+            _LOGGER.exception("Error in run_task")
+        except asyncio.CancelledError:
+            # Don't swallow cancellation
+            if (
+                sys.version_info >= (3, 11)
+                and (current_task := asyncio.current_task())
+                and current_task.cancelling()
+            ):
+                raise
+        finally:
+            self._run_task = None
         await self._multiplexer.wait()
 
     async def _handler(self) -> None:
         """Wait until connection is closed."""
+
         async def _wait_with_timeout() -> None:
             try:
                 async with async_timeout.timeout(50):
                     await self._multiplexer.wait()
             except asyncio.TimeoutError:
                 await self._multiplexer.ping()
+
         try:
             while self._multiplexer.is_connected:
                 await _wait_with_timeout()
