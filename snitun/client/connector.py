@@ -228,6 +228,9 @@ class Connector:
             return
 
         transport = ChannelTransport(self._loop, channel)
+        # The request_handler is the aiohttp RequestHandler
+        # that is generated from the protocol_factory that
+        # was passed in the constructor.
         request_handler = self._protocol_factory()
         # Performance: We could avoid the task here if
         # channel.message_transport feed the protocol directly, i.e.
