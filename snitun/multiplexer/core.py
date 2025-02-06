@@ -37,16 +37,16 @@ class Multiplexer:
     """Multiplexer Socket wrapper."""
 
     __slots__ = [
-        "_crypto",
-        "_reader",
-        "_writer",
-        "_loop",
-        "_queue",
-        "_healthy",
-        "_processing_task",
         "_channels",
+        "_crypto",
+        "_healthy",
+        "_loop",
         "_new_connections",
+        "_processing_task",
+        "_queue",
+        "_reader",
         "_throttling",
+        "_writer",
     ]
 
     def __init__(

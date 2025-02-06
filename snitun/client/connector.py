@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from asyncio import BufferedProtocol, Transport
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
 import ipaddress
 import logging
+from ssl import SSLContext, SSLError
 import sys
-from typing import Any, Callable
-from asyncio import Transport, BufferedProtocol
+from typing import Any
+
 from aiohttp.web import RequestHandler
 
-from ssl import SSLContext, SSLError
 from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
@@ -25,7 +26,7 @@ class ChannelTransport(Transport):
     _start_tls_compatible = True
 
     def __init__(
-        self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel
+        self, loop: asyncio.AbstractEventLoop, channel: MultiplexerChannel,
     ) -> None:
         """Initialize ChannelTransport."""
         self._channel = channel
@@ -86,7 +87,7 @@ class ChannelTransport(Transport):
                 raise
             except BaseException as exc:
                 self._fatal_error(
-                    exc, "Fatal error: protocol.get_buffer() call failed."
+                    exc, "Fatal error: protocol.get_buffer() call failed.",
                 )
                 return
 
@@ -117,7 +118,7 @@ class ChannelTransport(Transport):
                 raise
             except BaseException as exc:
                 self._fatal_error(
-                    exc, "Fatal error: protocol.buffer_updated() call failed."
+                    exc, "Fatal error: protocol.buffer_updated() call failed.",
                 )
 
     def _force_close(self, exc: Exception) -> None:
@@ -135,7 +136,7 @@ class ChannelTransport(Transport):
                 "exception": exc,
                 "transport": self,
                 "protocol": self._protocol,
-            }
+            },
         )
         self._force_close(exc)
 
@@ -201,7 +202,7 @@ class Connector:
         return True
 
     async def handler(
-        self, multiplexer: Multiplexer, channel: MultiplexerChannel
+        self, multiplexer: Multiplexer, channel: MultiplexerChannel,
     ) -> None:
         """Handle new connection from SNIProxy."""
         _LOGGER.debug("Receive from %s a request for %s", channel.ip_address)
@@ -222,7 +223,7 @@ class Connector:
         # Open connection to endpoint
         try:
             new_transport = await self._loop.start_tls(
-                transport, request_handler, self._ssl_context, server_side=True
+                transport, request_handler, self._ssl_context, server_side=True,
             )
         except (OSError, SSLError):
             # This can can be just about any error, but mostly likely it's a TLS error
