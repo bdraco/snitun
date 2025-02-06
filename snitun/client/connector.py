@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import BufferedProtocol, Transport
+import asyncio.sslproto
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
 import ipaddress
@@ -35,7 +36,7 @@ class ChannelTransport(Transport):
         """Initialize ChannelTransport."""
         self._channel = channel
         self._loop = loop
-        self._protocol: asyncio.BufferedProtocol | None = None
+        self._protocol: asyncio.sslproto.SSLProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
