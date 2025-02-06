@@ -1,4 +1,5 @@
 """Tests for core multiplexer handler."""
+
 import asyncio
 import ipaddress
 from unittest.mock import patch

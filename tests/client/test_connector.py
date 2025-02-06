@@ -1,4 +1,5 @@
 """Test client connector."""
+
 import asyncio
 import ipaddress
 from unittest.mock import AsyncMock, patch

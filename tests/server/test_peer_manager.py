@@ -1,4 +1,5 @@
 """Test peer manager."""
+
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone

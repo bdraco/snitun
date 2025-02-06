@@ -35,7 +35,7 @@ class ChannelTransport(Transport):
         """Initialize ChannelTransport."""
         self._channel = channel
         self._loop = loop
-        self._protocol: asyncio.Protocol | None = None
+        self._protocol: asyncio.BufferedProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
@@ -83,6 +83,9 @@ class ChannelTransport(Transport):
                 self._fatal_error(exc, "Fatal error: channel.read() call failed.")
                 return
 
+            # This is nearly the same approach as
+            # asyncio._SelectorSocketTransport._read_ready__get_buffer
+            # https://github.com/python/cpython/blob/365cf5fc23835fa6dc8608396109085f31d2d5f0/Lib/asyncio/selector_events.py#L972
             peer_payload_len = len(from_peer)
             try:
                 buf = self._protocol.get_buffer(-1)
@@ -111,8 +114,6 @@ class ChannelTransport(Transport):
 
             try:
                 buf[:peer_payload_len] = from_peer
-            except (BlockingIOError, InterruptedError):
-                return
             except (SystemExit, KeyboardInterrupt):
                 raise
             except BaseException as exc:  # noqa: BLE001
@@ -238,7 +239,8 @@ class Connector:
             )
         else:
             transport_reader_task = self._loop.create_task(
-                transport.start(), name="TransportReaderTask",
+                transport.start(),
+                name="TransportReaderTask",
             )
         # Open connection to endpoint
         try:

@@ -1,4 +1,5 @@
 """Tests for aiohttp snitun client."""
+
 from unittest.mock import patch
 
 from snitun.utils.aiohttp_client import SniTunClientAioHttp

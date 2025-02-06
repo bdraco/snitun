@@ -1,4 +1,5 @@
 """Test Multiplexer channels."""
+
 import asyncio
 import ipaddress
 
