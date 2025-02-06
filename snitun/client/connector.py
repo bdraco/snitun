@@ -120,7 +120,7 @@ class ChannelTransport(Transport):
             except (SystemExit, KeyboardInterrupt):
                 raise
             except BaseException as exc:  # noqa: BLE001
-                self._fatal_error(exc, "Fatal read error on socket transport")
+                self._fatal_error(exc, "Fatal error consuming buffer from peer.")
                 return
 
             try:
