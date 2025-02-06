@@ -64,7 +64,7 @@ class SniTunClientAioHttp:
         )
         _LOGGER.info("AioHTTP snitun client started")
 
-    async def stop(self, *, wait: bool = False) -> None:
+    async def stop(self, *, wait: bool = False) -> None:  # noqa: ARG002
         """
         Stop internal server.
 
