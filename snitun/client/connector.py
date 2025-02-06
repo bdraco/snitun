@@ -67,6 +67,8 @@ class ChannelTransport(Transport):
     async def start(self) -> None:
         """Start reading from the channel.
 
+        Here we read the SSL data from the channel and pass it to the protocol.
+
         As a future improvement, it would be a bit more efficient to
         have the channel call this as a callback from channel.message_transport.
         """
