@@ -207,7 +207,7 @@ class Connector:
         self, multiplexer: Multiplexer, channel: MultiplexerChannel,
     ) -> None:
         """Handle new connection from SNIProxy."""
-        _LOGGER.debug("Receive from %s a request for %s", channel.ip_address)
+        _LOGGER.debug("Receive from %s a request", channel.ip_address)
 
         # Check policy
         if not self._whitelist_policy(channel.ip_address):
