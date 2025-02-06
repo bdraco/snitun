@@ -83,9 +83,9 @@ class ChannelTransport(Transport):
                 raise
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 self._fatal_error(exc, "Fatal error: channel.read() call failed.")
-                return
+                raise
 
             # This is nearly the same approach as
             # asyncio._SelectorSocketTransport._read_ready__get_buffer
@@ -93,46 +93,53 @@ class ChannelTransport(Transport):
             peer_payload_len = len(from_peer)
             try:
                 buf = self._protocol.get_buffer(-1)
-                if not (available_len := len(buf)):
-                    raise RuntimeError("get_buffer() returned an empty buffer")
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 self._fatal_error(
                     exc,
                     "Fatal error: protocol.get_buffer() call failed.",
                 )
-                return
+                raise
+
+            if not (available_len := len(buf)):
+                exc = RuntimeError("get_buffer() returned an empty buffer")
+                self._fatal_error(
+                    exc, "Fatal error: get_buffer() returned an empty buffer"
+                )
+                raise exc
 
             if available_len < peer_payload_len:
+                exc = RuntimeError(
+                    "Available buffer is %s, need %s",
+                    available_len,
+                    peer_payload_len,
+                )
                 self._fatal_error(
-                    RuntimeError(
-                        "Available buffer is %s, need %s",
-                        available_len,
-                        peer_payload_len,
-                    ),
+                    exc,
                     f"Fatal error: out of buffer need {peer_payload_len}"
                     f" bytes but only have {available_len} bytes",
                 )
-                return
+                raise exc
 
             try:
                 buf[:peer_payload_len] = from_peer
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 self._fatal_error(exc, "Fatal error consuming buffer from peer.")
-                return
+                raise
 
             try:
                 self._protocol.buffer_updated(peer_payload_len)
             except (SystemExit, KeyboardInterrupt):
                 raise
-            except BaseException as exc:  # noqa: BLE001
+            except BaseException as exc:
                 self._fatal_error(
                     exc,
                     "Fatal error: protocol.buffer_updated() call failed.",
                 )
+                raise
 
     def _force_close(self, exc: Exception) -> None:
         """Force close the transport."""
