@@ -81,6 +81,7 @@ class ChannelTransport(Transport):
                 raise
             except BaseException as exc:  # noqa: BLE001
                 self._fatal_error(exc, "Fatal error: channel.read() call failed.")
+                return
 
             peer_payload_len = len(from_peer)
             try:
