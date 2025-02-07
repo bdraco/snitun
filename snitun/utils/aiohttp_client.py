@@ -71,6 +71,9 @@ class SniTunClientAioHttp:
 
         Args:
             wait: wait for the socket to close.
+
+            This argument is not used, as we can now stop without
+            waiting.
         """
         await self.disconnect()
         _LOGGER.info("AioHTTP snitun client closed")
