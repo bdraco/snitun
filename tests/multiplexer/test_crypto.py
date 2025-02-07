@@ -2,8 +2,6 @@
 
 import os
 
-import pytest
-
 from snitun.multiplexer.crypto import CryptoTransport
 
 

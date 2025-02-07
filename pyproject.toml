@@ -37,7 +37,7 @@ version = "0.40.0"
 [project.optional-dependencies]
 lint = [
     "pylint==3.2.7",
-    "ruff==0.9.4",
+    "ruff==0.9.5",
 ]
 test = [
     "pytest-aiohttp==1.1.0",
@@ -132,6 +132,8 @@ target-version = "py310"
 
 [tool.ruff.lint]
 ignore = [
+  "A005", # https://docs.astral.sh/ruff/rules/stdlib-module-shadowing/
+  "ASYNC110", # https://docs.astral.sh/ruff/rules/async-busy-wait/
   "ANN101", # https://docs.astral.sh/ruff/rules/missing-type-self/
   "EM101", # https://docs.astral.sh/ruff/rules/raw-string-in-exception/
   "EM102", # https://docs.astral.sh/ruff/rules/f-string-in-exception/

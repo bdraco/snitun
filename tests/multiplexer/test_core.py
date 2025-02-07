@@ -35,13 +35,18 @@ async def test_init_multiplexer_client(test_client, crypto_transport):
 
 
 async def test_init_multiplexer_server_throttling(
-    test_server, test_client, crypto_transport
+    test_server,
+    test_client,
+    crypto_transport,
 ):
     """Test to create a new Multiplexer from server socket."""
     client = test_server[0]
 
     multiplexer = Multiplexer(
-        crypto_transport, client.reader, client.writer, throttling=500
+        crypto_transport,
+        client.reader,
+        client.writer,
+        throttling=500,
     )
 
     assert multiplexer.is_connected
@@ -53,7 +58,10 @@ async def test_init_multiplexer_server_throttling(
 async def test_init_multiplexer_client_throttling(test_client, crypto_transport):
     """Test to create a new Multiplexer from client socket."""
     multiplexer = Multiplexer(
-        crypto_transport, test_client.reader, test_client.writer, throttling=500
+        crypto_transport,
+        test_client.reader,
+        test_client.writer,
+        throttling=500,
     )
 
     assert multiplexer.is_connected
@@ -242,7 +250,9 @@ async def test_multiplexer_data_channel(multiplexer_client, multiplexer_server):
 
 
 async def test_multiplexer_channel_shutdown(
-    event_loop, multiplexer_client, multiplexer_server
+    event_loop,
+    multiplexer_client,
+    multiplexer_server,
 ):
     """Test that new channels are created and graceful shutdown."""
     loop = event_loop
@@ -277,7 +287,8 @@ async def test_multiplexer_channel_shutdown(
 
 
 async def test_multiplexer_data_channel_abort_full(
-    multiplexer_client, multiplexer_server
+    multiplexer_client,
+    multiplexer_server,
 ):
     """Test that new channels are created."""
     assert not multiplexer_client._channels
@@ -305,7 +316,9 @@ async def test_multiplexer_data_channel_abort_full(
 
 
 async def test_multiplexer_throttling(
-    event_loop, multiplexer_client, multiplexer_server
+    event_loop,
+    multiplexer_client,
+    multiplexer_server,
 ):
     """Test that new channels are created and graceful shutdown."""
     loop = event_loop
@@ -345,7 +358,9 @@ async def test_multiplexer_throttling(
 
 
 async def test_multiplexer_core_peer_timeout(
-    event_loop, multiplexer_client, multiplexer_server
+    event_loop,
+    multiplexer_client,
+    multiplexer_server,
 ):
     """Test that new channels are created and graceful shutdown."""
     from snitun.multiplexer import core as multi_core
