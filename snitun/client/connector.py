@@ -105,7 +105,8 @@ class ChannelTransport(Transport):
             if not (available_len := len(buf)):
                 exc = RuntimeError("get_buffer() returned an empty buffer")
                 self._fatal_error(
-                    exc, "Fatal error: get_buffer() returned an empty buffer"
+                    exc,
+                    "Fatal error: get_buffer() returned an empty buffer",
                 )
                 raise exc
 
