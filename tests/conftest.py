@@ -1,16 +1,21 @@
 """Pytest fixtures for SniTun."""
 
 import asyncio
+from collections.abc import AsyncGenerator
 from datetime import datetime, timedelta, timezone
+from functools import partial
 import logging
 import os
 import select
 import socket
+import ssl
 from threading import Thread
 from unittest.mock import patch
 
+from aiohttp import web
 import attr
 import pytest
+from pytest_aiohttp import AiohttpServer
 
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.crypto import CryptoTransport
@@ -18,6 +23,7 @@ from snitun.server.listener_peer import PeerListener
 from snitun.server.listener_sni import SNIProxy
 from snitun.server.peer import Peer
 from snitun.server.peer_manager import PeerManager
+from snitun.utils.aiohttp_client import SniTunClientAioHttp
 from snitun.utils.asyncio import asyncio_timeout
 
 from .server.const_fernet import FERNET_TOKENS
@@ -254,3 +260,16 @@ async def test_client_peer(peer_listener):
     yield Client(reader, writer)
 
     writer.close()
+
+
+@pytest.fixture
+async def snitun_client_aiohttp(
+    aiohttp_server: AiohttpServer,
+) -> AsyncGenerator[SniTunClientAioHttp, None]:
+    """Create a SniTunClientAioHttp."""
+    app = web.Application()
+    server = await aiohttp_server(app)
+    client = SniTunClientAioHttp(server.runner, None, "127.0.0.1", "4242")
+    yield client
+    await client.stop()
+    await server.close()

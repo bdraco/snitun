@@ -10,6 +10,7 @@ import pytest
 from snitun.client.client_peer import ClientPeer
 from snitun.client.connector import Connector
 from snitun.exceptions import SniTunConnectionError
+from snitun.utils.aiohttp_client import SniTunClientAioHttp
 
 from ..server.const_fernet import create_peer_config
 
@@ -100,10 +101,15 @@ async def test_init_client_peer_invalid_token(
     assert not peer_manager.peer_available("localhost")
 
 
-async def test_flow_client_peer(peer_listener, peer_manager, test_endpoint):
+async def test_flow_client_peer(
+    peer_listener,
+    peer_manager,
+    test_endpoint,
+    snitun_client_aiohttp: SniTunClientAioHttp,
+) -> None:
     """Test setup of ClientPeer, test flow."""
     client = ClientPeer("127.0.0.1", "8893")
-    connector = Connector("127.0.0.1", "8822")
+    connector = snitun_client_aiohttp._make_connector()
 
     assert not peer_manager.peer_available("localhost")
 

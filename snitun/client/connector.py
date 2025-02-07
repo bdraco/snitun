@@ -200,7 +200,7 @@ class Connector:
     def __init__(
         self,
         protocol_factory: Callable[[], RequestHandler],
-        ssl_context: SSLContext,
+        ssl_context: SSLContext | None,
         whitelist: bool = False,
         endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
     ) -> None:
@@ -223,33 +223,17 @@ class Connector:
             return ip_address in self._whitelist
         return True
 
-    async def handler(
+    async def _start_tls(
         self,
+        transport: ChannelTransport,
+        request_handler: RequestHandler,
         multiplexer: Multiplexer,
         channel: MultiplexerChannel,
-    ) -> None:
-        """Handle new connection from SNIProxy."""
-        _LOGGER.debug("Receive from %s a request", channel.ip_address)
-
-        # Check policy
-        if not self._whitelist_policy(channel.ip_address):
-            _LOGGER.warning("Block request from %s per policy", channel.ip_address)
-            await multiplexer.delete_channel(channel)
-            return
-
-        transport = ChannelTransport(self._loop, channel)
-        # The request_handler is the aiohttp RequestHandler
-        # that is generated from the protocol_factory that
-        # was passed in the constructor.
-        request_handler = self._protocol_factory()
-        transport_reader_task = create_eager_task(
-            transport.start(),
-            name="TransportReaderTask",
-            loop=self._loop,
-        )
-        # Open connection to endpoint
+        transport_reader_task: asyncio.Task[None],
+    ) -> asyncio.Transport | None:
+        """Start TLS on the transport."""
         try:
-            new_transport = await self._loop.start_tls(
+            return await self._loop.start_tls(
                 transport,
                 request_handler,
                 self._ssl_context,
@@ -275,11 +259,49 @@ class Connector:
                 pass
             except Exception:
                 _LOGGER.exception("Error in transport_reader_task")
+            return None
+
+    async def handler(
+        self,
+        multiplexer: Multiplexer,
+        channel: MultiplexerChannel,
+    ) -> None:
+        """Handle new connection from SNIProxy."""
+        _LOGGER.debug("New connection from %s", channel.ip_address)
+
+        # Check policy
+        if not self._whitelist_policy(channel.ip_address):
+            _LOGGER.warning("Block request from %s per policy", channel.ip_address)
+            await multiplexer.delete_channel(channel)
             return
+
+        transport = ChannelTransport(self._loop, channel)
+        # The request_handler is the aiohttp RequestHandler
+        # that is generated from the protocol_factory that
+        # was passed in the constructor.
+        request_handler = self._protocol_factory()
+        _LOGGER.debug("Request handler created for %s", channel.id)
+        transport_reader_task = create_eager_task(
+            transport.start(),
+            name="TransportReaderTask",
+            loop=self._loop,
+        )
+        _LOGGER.debug("Started transport reader task for %s", channel.id)
+        if self._ssl_context:
+            new_transport = await self._start_tls(
+                transport,
+                request_handler,
+                multiplexer,
+                channel,
+                transport_reader_task,
+            )
+            if not new_transport:
+                return
+        else:
+            new_transport = transport
 
         request_handler.connection_made(new_transport)
         _LOGGER.info("Connected peer: %s", new_transport.get_extra_info("peername"))
-
         try:
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
