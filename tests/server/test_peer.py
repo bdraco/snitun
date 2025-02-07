@@ -1,6 +1,5 @@
 """Test a Peer object."""
 
-from datetime import datetime, timedelta, timezone
 import asyncio
 from datetime import datetime, timedelta, timezone
 import hashlib
