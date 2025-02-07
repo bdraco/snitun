@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
+from ..utils.asyncio import create_eager_task
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -241,22 +242,11 @@ class Connector:
         # that is generated from the protocol_factory that
         # was passed in the constructor.
         request_handler = self._protocol_factory()
-        # Performance: We could avoid the task here if
-        # channel.message_transport feed the protocol directly, i.e.
-        # called the code in the loop in this task and would only queue
-        # the data if the protocol is paused.
-        if sys.version_info >= (3, 12):
-            transport_reader_task = asyncio.Task(
-                transport.start(),
-                loop=self._loop,
-                eager_start=True,
-                name="TransportReaderTask",
-            )
-        else:
-            transport_reader_task = self._loop.create_task(
-                transport.start(),
-                name="TransportReaderTask",
-            )
+        transport_reader_task = create_eager_task(
+            transport.start(),
+            name="TransportReaderTask",
+            loop=self._loop,
+        )
         # Open connection to endpoint
         try:
             new_transport = await self._loop.start_tls(
