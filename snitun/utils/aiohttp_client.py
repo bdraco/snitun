@@ -8,11 +8,11 @@ import logging
 import ssl
 from typing import TYPE_CHECKING, Any
 
-from aiohttp.web import AppRunner, SockSite
+if TYPE_CHECKING:
+    from aiohttp.web import AppRunner
 
 from ..client.client_peer import ClientPeer
 from ..client.connector import Connector
-from .asyncio import asyncio_timeout
 
 _LOGGER = logging.getLogger(__name__)
 
