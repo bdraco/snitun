@@ -146,7 +146,8 @@ class ClientPeer:
                 raise
         finally:
             self._run_task = None
-        await self._multiplexer.wait()
+        if self._multiplexer:
+            await self._multiplexer.wait()
 
     async def _handler(self) -> None:
         """Wait until connection is closed."""
