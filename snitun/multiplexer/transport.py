@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from asyncio import BufferedProtocol, Transport
+from asyncio import Transport
 import asyncio.sslproto
 
 from ..exceptions import MultiplexerTransportClose
@@ -29,8 +29,6 @@ class ChannelTransport(Transport):
 
     def set_protocol(self, protocol: asyncio.Protocol) -> None:
         """Set the protocol."""
-        if not isinstance(protocol, BufferedProtocol):
-            raise TypeError("Protocol must be a BufferedProtocol")
         self._protocol = protocol
 
     def is_closing(self) -> bool:
