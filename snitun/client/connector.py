@@ -29,14 +29,10 @@ class ChannelTransport(Transport):
 
     _start_tls_compatible = True
 
-    def __init__(
-        self,
-        loop: asyncio.AbstractEventLoop,
-        channel: MultiplexerChannel,
-    ) -> None:
+    def __init__(self, channel: MultiplexerChannel) -> None:
         """Initialize ChannelTransport."""
         self._channel = channel
-        self._loop = loop
+        self._loop = asyncio.get_running_loop()
         self._protocol: asyncio.sslproto.SSLProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
@@ -223,7 +219,7 @@ class Connector:
             return ip_address in self._whitelist
         return True
 
-    async def _start_tls(
+    async def _start_server_tls(
         self,
         transport: ChannelTransport,
         request_handler: RequestHandler,
@@ -239,10 +235,10 @@ class Connector:
                 self._ssl_context,
                 server_side=True,
             )
-        except (OSError, SSLError):
+        except (OSError, SSLError) as ex:
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
-            _LOGGER.debug("Can't start TLS for %s", channel.id)
+            _LOGGER.debug("Can't start TLS for %s: %s", channel.id, ex, exc_info=True)
             transport_reader_task.cancel()
             await multiplexer.delete_channel(channel)
             try:
@@ -275,7 +271,7 @@ class Connector:
             await multiplexer.delete_channel(channel)
             return
 
-        transport = ChannelTransport(self._loop, channel)
+        transport = ChannelTransport(channel)
         # The request_handler is the aiohttp RequestHandler
         # that is generated from the protocol_factory that
         # was passed in the constructor.
@@ -288,7 +284,7 @@ class Connector:
         )
         _LOGGER.debug("Started transport reader task for %s", channel.id)
         if not (
-            new_transport := await self._start_tls(
+            new_transport := await self._start_server_tls(
                 transport,
                 request_handler,
                 multiplexer,

@@ -7,6 +7,7 @@ import logging
 import os
 import select
 import socket
+import ssl
 from threading import Thread
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ import attr
 import pytest
 from pytest_aiohttp import AiohttpServer
 
+from snitun.client.connector import Connector
 from snitun.multiplexer.channel import MultiplexerChannel
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.crypto import CryptoTransport
@@ -272,13 +274,44 @@ async def test_client_peer(peer_listener: PeerListener) -> AsyncGenerator[Client
 
 
 @pytest.fixture
+async def server_ssl_context() -> ssl.SSLContext:
+    """Create a SSL context for the server."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.options |= ssl.OP_NO_COMPRESSION
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    context.set_default_verify_paths()
+    context.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return context
+
+
+@pytest.fixture
+async def client_ssl_context() -> ssl.SSLContext:
+    """Create a SSL context for the client."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    context.options |= ssl.OP_NO_COMPRESSION
+    context.set_default_verify_paths()
+    context.set_ciphers("DEFAULT:@SECLEVEL=0")
+    return context
+
+
+@pytest.fixture
 async def snitun_client_aiohttp(
     aiohttp_server: AiohttpServer,
+    server_ssl_context: ssl.SSLContext,
 ) -> AsyncGenerator[SniTunClientAioHttp, None]:
     """Create a SniTunClientAioHttp."""
     app = web.Application()
     server = await aiohttp_server(app)
-    client = SniTunClientAioHttp(server.runner, None, "127.0.0.1", "4242")
+    client = SniTunClientAioHttp(server.runner, server_ssl_context, "127.0.0.1", "4242")
     yield client
     await client.stop()
     await server.close()
+
+
+@pytest.fixture
+async def connector(snitun_client_aiohttp: SniTunClientAioHttp) -> Connector:
+    """Create a connector."""
+    return snitun_client_aiohttp._make_connector()
