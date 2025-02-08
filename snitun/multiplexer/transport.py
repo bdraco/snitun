@@ -52,8 +52,7 @@ class ChannelTransport(Transport):
 
     def write(self, data: bytes) -> None:
         """Write data to the channel."""
-        if not self._channel.closing:
-            self._channel.write_no_wait(data)
+        self._channel.write_no_wait(data)
 
     async def wait_for_close(self) -> None:
         """Wait for the transport to close."""
