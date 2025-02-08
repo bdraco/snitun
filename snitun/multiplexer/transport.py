@@ -26,8 +26,12 @@ class ChannelTransport(Transport):
         self._loop = asyncio.get_running_loop()
         self._protocol: asyncio.BufferedProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
-        self._reader_task: asyncio.Task[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
+        self._reader_task = create_eager_task(
+            self._reader(),
+            loop=self._loop,
+            name=f"TransportReaderTask {self._channel.ip_address} ({self._channel.id})",
+        )
 
     def get_protocol(self) -> asyncio.Protocol:
         """Return the protocol."""
@@ -50,15 +54,6 @@ class ChannelTransport(Transport):
         """Write data to the channel."""
         if not self._channel.closing:
             self._channel.write_no_wait(data)
-
-    async def start_reader(self) -> None:
-        """Start reading from the channel."""
-        assert not self._reader_task, "Transport already started"
-        self._reader_task = create_eager_task(
-            self._reader(),
-            loop=self._loop,
-            name=f"TransportReaderTask {self._channel.ip_address} ({self._channel.id})",
-        )
 
     async def wait_for_close(self) -> None:
         """Wait for the transport to close."""

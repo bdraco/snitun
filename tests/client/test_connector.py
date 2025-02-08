@@ -2,7 +2,6 @@
 
 import asyncio
 import asyncio.sslproto
-from contextlib import suppress
 import ipaddress
 import ssl
 import sys
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
 from snitun.client.connector import Connector
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.transport import ChannelTransport
-from snitun.utils.asyncio import create_eager_task
 
 from ..conftest import BAD_ADDR, IP_ADDR
 
@@ -38,18 +36,12 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
     ) -> None:
         super().__init__(loop=asyncio.get_running_loop())
         self._channel_transport = channel_transport
-        self._transport_reader_task = create_eager_task(
-            channel_transport.start(),
-            name="TransportReaderTask",
-        )
 
     def close(self) -> None:
         """Close connection."""
         super().close()
+        self._channel_transport.stop_reader()
         self._channel_transport.close()
-        self._transport_reader_task.cancel()
-        with suppress(asyncio.CancelledError, Exception):
-            self._transport_reader_task.exception()
 
 
 class ChannelConnector(BaseConnector):

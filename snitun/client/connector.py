@@ -64,7 +64,6 @@ class Connector:
             return
 
         transport = ChannelTransport(channel)
-        await transport.start_reader()
         # The request_handler is the aiohttp RequestHandler
         # that is generated from the protocol_factory that
         # was passed in the constructor.
