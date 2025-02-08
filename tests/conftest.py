@@ -299,9 +299,6 @@ async def server_ssl_context(tls_certificate: trustme.LeafCert) -> ssl.SSLContex
     """Create a SSL context for the server."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls_certificate.configure_cert(context)
-    context.options |= ssl.OP_NO_COMPRESSION
-    context.set_default_verify_paths()
-    context.set_ciphers("DEFAULT:@SECLEVEL=0")
     return context
 
 
@@ -310,9 +307,6 @@ async def client_ssl_context(tls_certificate_authority: trustme.CA) -> ssl.SSLCo
     """Create a SSL context for the client."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     tls_certificate_authority.configure_trust(context)
-    context.options |= ssl.OP_NO_COMPRESSION
-    context.set_default_verify_paths()
-    context.set_ciphers("DEFAULT:@SECLEVEL=0")
     return context
 
 
