@@ -242,7 +242,7 @@ class Connector:
         except (OSError, SSLError):
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
-            _LOGGER.debug("Can't start TLS for %s", channel.id, exc_info=True)
+            _LOGGER.debug("Can't start TLS for %s", channel.id)
             transport_reader_task.cancel()
             await multiplexer.delete_channel(channel)
             try:
@@ -296,8 +296,28 @@ class Connector:
                 transport_reader_task,
             )
         ):
+            _LOGGER.debug("Failed to start TLS for %s", channel.id)
             return
 
+        # Now that we have the connection upgraded to TLS, we can
+        # start the request handler and serve the connection.
+        await self._run_request_handler(
+            request_handler,
+            new_transport,
+            multiplexer,
+            channel,
+            transport_reader_task,
+        )
+
+    async def _run_request_handler(
+        self,
+        request_handler: RequestHandler,
+        new_transport: asyncio.Transport,
+        multiplexer: Multiplexer,
+        channel: MultiplexerChannel,
+        transport_reader_task: asyncio.Task[None],
+    ) -> None:
+        """Run the request handler."""
         request_handler.connection_made(new_transport)
         _LOGGER.info("Connected peer: %s", new_transport.get_extra_info("peername"))
         try:
