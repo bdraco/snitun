@@ -134,3 +134,6 @@ include = [
 
 [tool.coverage.run]
 plugins = ["covdefaults"]
+
+[tool.coverage.report]
+fail_under = 75
