@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncGenerator, Generator
 from datetime import datetime, timedelta, timezone
+import ipaddress
 import logging
 import os
 import select
@@ -10,7 +11,7 @@ import socket
 import ssl
 from threading import Thread
 from unittest.mock import patch
-import ipaddress
+
 from aiohttp import web
 import attr
 import pytest
@@ -31,7 +32,6 @@ from snitun.utils.asyncio import asyncio_timeout
 from .server.const_fernet import FERNET_TOKENS
 
 logging.basicConfig(level=logging.DEBUG)
-
 
 
 IP_ADDR = ipaddress.ip_address("8.8.8.8")

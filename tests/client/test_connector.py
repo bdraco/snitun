@@ -8,11 +8,13 @@ import sys
 from typing import TYPE_CHECKING
 
 import aiohttp
-from aiohttp import ClientRequest, ClientTimeout,ClientConnectorError
+from aiohttp import ClientConnectorError, ClientRequest, ClientTimeout
 from aiohttp.client_proto import ResponseHandler
 from aiohttp.connector import BaseConnector
 import pytest
-from snitun.exceptions import MultiplexerTransportClose, MultiplexerTransportError
+
+from snitun.exceptions import MultiplexerTransportClose
+
 if TYPE_CHECKING:
     from aiohttp.tracing import Trace
 
@@ -20,8 +22,8 @@ from snitun.client.connector import Connector
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.transport import ChannelTransport
 from snitun.utils.asyncio import create_eager_task
-from ..conftest import IP_ADDR, BAD_ADDR
 
+from ..conftest import BAD_ADDR, IP_ADDR
 
 
 class ResponseHandlerWithTransportReader(ResponseHandler):
@@ -80,13 +82,16 @@ class ChannelConnector(BaseConnector):
                 server_side=False,
             )
         except MultiplexerTransportClose as ex:
-            raise ClientConnectorError(req.connection_key, OSError(None, "Connection closed by remote host")) from ex
+            raise ClientConnectorError(
+                req.connection_key, OSError(None, "Connection closed by remote host"),
+            ) from ex
         protocol.connection_made(new_transport)
         return protocol
 
 
 @pytest.mark.skipif(
-    sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls",
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11+ for working start_tls",
 )
 async def test_connector_disallowed_ip_address(
     multiplexer_client: Multiplexer,
@@ -96,7 +101,9 @@ async def test_connector_disallowed_ip_address(
 ) -> None:
     """End to end test from connecting from a non-whitelisted IP."""
     multiplexer_client._new_connections = connector.handler
-    connector = ChannelConnector(multiplexer_server, client_ssl_context, ip_address=BAD_ADDR)
+    connector = ChannelConnector(
+        multiplexer_server, client_ssl_context, ip_address=BAD_ADDR,
+    )
     session = aiohttp.ClientSession(connector=connector)
     with pytest.raises(ClientConnectorError, match="Connection closed by remote host"):
         await session.get("https://localhost:4242/does-not-exist")
@@ -104,7 +111,8 @@ async def test_connector_disallowed_ip_address(
 
 
 @pytest.mark.skipif(
-    sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls",
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11+ for working start_tls",
 )
 async def test_connector_non_existent_url(
     multiplexer_client: Multiplexer,
@@ -122,7 +130,8 @@ async def test_connector_non_existent_url(
 
 
 @pytest.mark.skipif(
-    sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls",
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11+ for working start_tls",
 )
 async def test_connector_valid_url(
     multiplexer_client: Multiplexer,
