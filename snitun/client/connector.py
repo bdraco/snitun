@@ -91,13 +91,11 @@ class Connector:
         # that is generated from the protocol_factory that
         # was passed in the constructor.
         request_handler = self._protocol_factory()
-        _LOGGER.debug("Request handler created for %s", channel.id)
         transport_reader_task = create_eager_task(
             transport.start(),
             name="TransportReaderTask",
             loop=self._loop,
         )
-        _LOGGER.debug("Started transport reader task for %s", channel.id)
 
         # Upgrade the transport to TLS
         try:
