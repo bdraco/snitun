@@ -51,28 +51,17 @@ class SniTunClientAioHttp:
         """Block until connection to snitun is closed."""
         return self._client.wait()
 
-    def _make_connector(
-        self,
-        whitelist: bool = False,
-        endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
-    ) -> Connector:
-        """Make a connector."""
-        return Connector(
-            self._protocol_factory,
-            self._ssl_context,
-            whitelist,
-            endpoint_connection_error_callback=endpoint_connection_error_callback,
-        )
-
     async def start(
         self,
         whitelist: bool = False,
         endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
     ) -> None:
         """Start internal server."""
-        self._connector = self._make_connector(
+        self._connector = Connector(
+            self._protocol_factory,
+            self._ssl_context,
             whitelist,
-            endpoint_connection_error_callback,
+            endpoint_connection_error_callback=endpoint_connection_error_callback,
         )
         _LOGGER.info("AioHTTP snitun client started")
 

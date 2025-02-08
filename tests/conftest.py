@@ -327,6 +327,8 @@ async def make_snitun_client_aiohttp(
     app.add_routes([web.get("/", lambda _: web.Response(text="Hello world"))])
     server = await aiohttp_server(app)
     client = SniTunClientAioHttp(server.runner, server_ssl_context, "127.0.0.1", "4242")
+    await client.start(whitelist=True)
+    client._connector.whitelist.add(IP_ADDR)
     yield client
     await client.stop()
     await server.close()
@@ -358,9 +360,7 @@ async def snitun_client_aiohttp_missing_certificate(
 @pytest.fixture
 async def connector(snitun_client_aiohttp: SniTunClientAioHttp) -> Connector:
     """Create a connector."""
-    connector = snitun_client_aiohttp._make_connector(whitelist=True)
-    connector.whitelist.add(IP_ADDR)
-    return connector
+    return snitun_client_aiohttp._connector
 
 
 @pytest.fixture
@@ -368,8 +368,4 @@ async def connector_missing_certificate(
     snitun_client_aiohttp_missing_certificate: SniTunClientAioHttp,
 ) -> Connector:
     """Create a connector."""
-    connector = snitun_client_aiohttp_missing_certificate._make_connector(
-        whitelist=True,
-    )
-    connector.whitelist.add(IP_ADDR)
-    return connector
+    return snitun_client_aiohttp_missing_certificate._connector
