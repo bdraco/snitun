@@ -17,8 +17,7 @@ if TYPE_CHECKING:
 from ..exceptions import MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
-from ..multiplexer.transport import ChannelTransport, cancel_transport_reader_task
-from ..utils.asyncio import create_eager_task
+from ..multiplexer.transport import ChannelTransport
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,12 +64,7 @@ class Connector:
             return
 
         transport = ChannelTransport(channel)
-        transport_reader_task = create_eager_task(
-            transport.start(),
-            name="TransportReaderTask",
-            loop=self._loop,
-        )
-
+        await transport.start()
         # The request_handler is the aiohttp RequestHandler
         # that is generated from the protocol_factory that
         # was passed in the constructor.
@@ -95,7 +89,7 @@ class Connector:
             )
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
-            await cancel_transport_reader_task(transport_reader_task)
+            await transport.stop()
             return
 
         # Now that we have the connection upgraded to TLS, we can
@@ -103,7 +97,7 @@ class Connector:
         _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
             request_handler_protocol.connection_made(new_transport)
-            await transport_reader_task
+            await transport.wait_for_close()
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
             _LOGGER.debug(
                 "Transport error for %s (%s)",

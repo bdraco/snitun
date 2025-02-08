@@ -10,27 +10,9 @@ import sys
 
 from ..exceptions import MultiplexerTransportClose
 from ..multiplexer.channel import MultiplexerChannel
+from ..utils.asyncio import create_eager_task
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def cancel_transport_reader_task(
-    transport_reader_task: asyncio.Task[None],
-) -> None:
-    """Cancel the transport reader task."""
-    transport_reader_task.cancel()
-    try:
-        await transport_reader_task
-    except asyncio.CancelledError:
-        # Don't swallow cancellation
-        if (
-            sys.version_info >= (3, 11)
-            and (current_task := asyncio.current_task())
-            and current_task.cancelling()
-        ):
-            raise
-    except Exception:
-        _LOGGER.exception("Error in transport_reader_task")
 
 
 class ChannelTransport(Transport):
@@ -44,6 +26,7 @@ class ChannelTransport(Transport):
         self._loop = asyncio.get_running_loop()
         self._protocol: asyncio.BufferedProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
+        self._reader_task: asyncio.Task[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
     def get_protocol(self) -> asyncio.Protocol:
@@ -69,13 +52,21 @@ class ChannelTransport(Transport):
             self._channel.write_no_wait(data)
 
     async def start(self) -> None:
-        """Start reading from the channel.
+        """Start reading from the channel."""
+        assert not self._reader_task, "Transport already started"
+        self._reader_task = create_eager_task(
+            self._reader(),
+            loop=self._loop,
+            name=f"TransportReaderTask {self._channel.ip_address} ({self._channel.id})",
+        )
 
-        Here we read the SSL data from the channel and pass it to the protocol.
+    async def wait_for_close(self) -> None:
+        """Wait for the transport to close."""
+        if self._reader_task:
+            await self._reader_task
 
-        As a future improvement, it would be a bit more efficient to
-        have the channel call this as a callback from channel.message_transport.
-        """
+    async def _reader(self) -> None:
+        """Read from the channel and pass data to the protocol."""
         while True:
             if self._pause_future:
                 await self._pause_future
@@ -145,6 +136,24 @@ class ChannelTransport(Transport):
                     "Fatal error: protocol.buffer_updated() call failed.",
                 )
                 raise
+
+    async def stop(self) -> None:
+        """Stop the transport."""
+        self._reader_task.cancel()
+        try:
+            await self._reader_task
+        except asyncio.CancelledError:
+            # Don't swallow cancellation
+            if (
+                sys.version_info >= (3, 11)
+                and (current_task := asyncio.current_task())
+                and current_task.cancelling()
+            ):
+                raise
+        except Exception:
+            _LOGGER.exception("Error in transport_reader_task")
+        finally:
+            self._reader_task = None
 
     def _force_close(self, exc: Exception | None) -> None:
         """Force close the transport."""
