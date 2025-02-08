@@ -127,7 +127,7 @@ class Connector:
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
             _LOGGER.debug(
-                "Transport closed error for %s (%s)",
+                "Transport error for %s (%s)",
                 channel.ip_address,
                 channel.id,
             )
