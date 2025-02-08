@@ -318,6 +318,7 @@ async def snitun_client_aiohttp(
 ) -> AsyncGenerator[SniTunClientAioHttp, None]:
     """Create a SniTunClientAioHttp."""
     app = web.Application()
+    app.add_routes([web.get("/", lambda _: web.Response(text="Hello world"))])
     server = await aiohttp_server(app)
     client = SniTunClientAioHttp(server.runner, server_ssl_context, "127.0.0.1", "4242")
     yield client
