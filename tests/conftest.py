@@ -10,7 +10,7 @@ import socket
 import ssl
 from threading import Thread
 from unittest.mock import patch
-
+import ipaddress
 from aiohttp import web
 import attr
 import pytest
@@ -31,6 +31,11 @@ from snitun.utils.asyncio import asyncio_timeout
 from .server.const_fernet import FERNET_TOKENS
 
 logging.basicConfig(level=logging.DEBUG)
+
+
+
+IP_ADDR = ipaddress.ip_address("8.8.8.8")
+BAD_ADDR = ipaddress.ip_address("8.8.1.1")
 
 
 @attr.s
@@ -329,4 +334,6 @@ async def snitun_client_aiohttp(
 @pytest.fixture
 async def connector(snitun_client_aiohttp: SniTunClientAioHttp) -> Connector:
     """Create a connector."""
-    return snitun_client_aiohttp._make_connector()
+    connector = snitun_client_aiohttp._make_connector(whitelist=True)
+    connector.whitelist.add(IP_ADDR)
+    return connector

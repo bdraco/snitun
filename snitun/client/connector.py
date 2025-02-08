@@ -36,7 +36,7 @@ class Connector:
     ) -> None:
         """Initialize Connector."""
         self._loop = asyncio.get_running_loop()
-        self._whitelist = set()
+        self._whitelist: set[ipaddress.IPv4Address] = set()
         self._whitelist_enabled = whitelist
         self._endpoint_connection_error_callback = endpoint_connection_error_callback
         self._protocol_factory = protocol_factory
