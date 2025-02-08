@@ -4,13 +4,15 @@ import asyncio
 from contextlib import suppress
 import ipaddress
 import ssl
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 from aiohttp import ClientRequest, ClientTimeout
 from aiohttp.client_proto import ResponseHandler
 from aiohttp.connector import BaseConnector
-from aiohttp.tracing import Trace
+
+if TYPE_CHECKING:
+    from aiohttp.tracing import Trace
 
 from snitun.client.connector import ChannelTransport, Connector
 from snitun.multiplexer.core import Multiplexer
