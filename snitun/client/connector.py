@@ -9,40 +9,18 @@ from contextlib import suppress
 import ipaddress
 import logging
 from ssl import SSLContext, SSLError
-import sys
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from aiohttp.web import RequestHandler
 
-from ..exceptions import MultiplexerTransportClose, MultiplexerTransportError
+from ..exceptions import MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
 from ..multiplexer.core import Multiplexer
-from ..multiplexer.transport import ChannelTransport
+from ..multiplexer.transport import ChannelTransport, cancel_transport_reader_task
 from ..utils.asyncio import create_eager_task
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def _cancel_transport_reader_task(
-    transport_reader_task: asyncio.Task[None],
-) -> None:
-    """Cancel the transport reader task."""
-    transport_reader_task.cancel()
-    try:
-        await transport_reader_task
-    except asyncio.CancelledError:
-        # Don't swallow cancellation
-        if (
-            sys.version_info >= (3, 11)
-            and (current_task := asyncio.current_task())
-            and current_task.cancelling()
-        ):
-            raise
-    except MultiplexerTransportClose:
-        pass
-    except Exception:
-        _LOGGER.exception("Error in transport_reader_task")
 
 
 class Connector:
@@ -117,7 +95,7 @@ class Connector:
             )
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
-            await _cancel_transport_reader_task(transport_reader_task)
+            await cancel_transport_reader_task(transport_reader_task)
             return
 
         # Now that we have the connection upgraded to TLS, we can

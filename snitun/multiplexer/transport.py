@@ -5,9 +5,32 @@ from __future__ import annotations
 import asyncio
 from asyncio import Transport
 import asyncio.sslproto
+import logging
+import sys
 
 from ..exceptions import MultiplexerTransportClose
 from ..multiplexer.channel import MultiplexerChannel
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def cancel_transport_reader_task(
+    transport_reader_task: asyncio.Task[None],
+) -> None:
+    """Cancel the transport reader task."""
+    transport_reader_task.cancel()
+    try:
+        await transport_reader_task
+    except asyncio.CancelledError:
+        # Don't swallow cancellation
+        if (
+            sys.version_info >= (3, 11)
+            and (current_task := asyncio.current_task())
+            and current_task.cancelling()
+        ):
+            raise
+    except Exception:
+        _LOGGER.exception("Error in transport_reader_task")
 
 
 class ChannelTransport(Transport):
