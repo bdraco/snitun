@@ -238,7 +238,13 @@ class Connector:
         except (OSError, SSLError) as ex:
             # This can can be just about any error, but mostly likely it's a TLS error
             # or the connection gets dropped in the middle of the handshake
-            _LOGGER.debug("Can't start TLS for %s: %s", channel.id, ex, exc_info=True)
+            _LOGGER.debug(
+                "Can't start TLS for %s (%s): %s",
+                channel.ip_address,
+                channel.id,
+                ex,
+                exc_info=True,
+            )
             transport_reader_task.cancel()
             await multiplexer.delete_channel(channel)
             try:
