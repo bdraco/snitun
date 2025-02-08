@@ -121,8 +121,7 @@ class ClientPeer:
         )
 
         # Task a process for pings/cleanups
-        if self._run_task:
-            raise RuntimeError("SniTun connection already running")
+        assert not self._run_task, "SniTun connection already running"
         self._run_task = self._loop.create_task(self._handler())
 
     async def stop(self) -> None:
