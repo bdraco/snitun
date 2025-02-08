@@ -25,6 +25,8 @@ from aiohttp.tracing import Trace
 
 
 class ResponseHandlerWithTransportReader(ResponseHandler):
+    """Response handler with transport reader."""
+
     def __init__(
         self,
         *args: Any,
@@ -46,15 +48,17 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
 
 
 class ChannelConnector(BaseConnector):
+    """Channel connector."""
+
     def __init__(
         self,
         multiplexer_server: Multiplexer,
         ssl_context: ssl.SSLContext,
     ) -> None:
+        """Initialize connector."""
         super().__init__()
         self._multiplexer_server = multiplexer_server
         self._ssl_context = ssl_context
-        self._factory = partial(ResponseHandler, loop=asyncio.get_running_loop())
 
     async def _create_connection(
         self,
@@ -70,19 +74,9 @@ class ChannelConnector(BaseConnector):
             channel_transport=transport,
             loop=asyncio.get_running_loop(),
         )
-        import pprint
-
-        pprint.pprint(
-            [
-                "ssl_context",
-                self._ssl_context,
-                "ciphers",
-                self._ssl_context.get_ciphers(),
-            ],
-        )
         await self._loop.start_tls(
             transport,
-            self._factory(),
+            protocol,
             self._ssl_context,
             server_side=False,
             ssl_handshake_timeout=0.1,
