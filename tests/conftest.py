@@ -15,6 +15,7 @@ from aiohttp import web
 import attr
 import pytest
 from pytest_aiohttp import AiohttpServer
+import trustme
 
 from snitun.client.connector import Connector
 from snitun.multiplexer.channel import MultiplexerChannel
@@ -274,23 +275,36 @@ async def test_client_peer(peer_listener: PeerListener) -> AsyncGenerator[Client
 
 
 @pytest.fixture
-async def server_ssl_context() -> ssl.SSLContext:
+def tls_certificate_authority() -> trustme.CA:
+    return trustme.CA()
+
+
+@pytest.fixture
+def tls_certificate(tls_certificate_authority: trustme.CA) -> trustme.LeafCert:
+    return tls_certificate_authority.issue_cert(
+        "localhost",
+        "localhost.localdomain",
+        "127.0.0.1",
+        "::1",
+    )
+
+
+@pytest.fixture
+async def server_ssl_context(tls_certificate: trustme.LeafCert) -> ssl.SSLContext:
     """Create a SSL context for the server."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls_certificate.configure_cert(context)
     context.options |= ssl.OP_NO_COMPRESSION
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
     context.set_default_verify_paths()
     context.set_ciphers("DEFAULT:@SECLEVEL=0")
     return context
 
 
 @pytest.fixture
-async def client_ssl_context() -> ssl.SSLContext:
+async def client_ssl_context(tls_certificate_authority: trustme.CA) -> ssl.SSLContext:
     """Create a SSL context for the client."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    tls_certificate_authority.configure_trust(context)
     context.options |= ssl.OP_NO_COMPRESSION
     context.set_default_verify_paths()
     context.set_ciphers("DEFAULT:@SECLEVEL=0")
