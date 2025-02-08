@@ -30,6 +30,7 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
         channel_transport: ChannelTransport,
     ) -> None:
         super().__init__(loop=asyncio.get_running_loop())
+        self._channel_transport = channel_transport
         self._transport_reader_task = create_eager_task(
             channel_transport.start(),
             name="TransportReaderTask",
@@ -38,6 +39,7 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
     def close(self) -> None:
         """Close connection."""
         super().close()
+        self._channel_transport.close()
         self._transport_reader_task.cancel()
         with suppress(asyncio.CancelledError, Exception):
             self._transport_reader_task.exception()
