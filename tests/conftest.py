@@ -3,12 +3,10 @@
 import asyncio
 from collections.abc import AsyncGenerator, Generator
 from datetime import datetime, timedelta, timezone
-from functools import partial
 import logging
 import os
 import select
 import socket
-import ssl
 from threading import Thread
 from unittest.mock import patch
 

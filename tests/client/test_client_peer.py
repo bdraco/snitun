@@ -10,9 +10,9 @@ import pytest
 from snitun.client.client_peer import ClientPeer
 from snitun.client.connector import Connector
 from snitun.exceptions import SniTunConnectionError
-from snitun.utils.aiohttp_client import SniTunClientAioHttp
 from snitun.server.listener_peer import PeerListener
 from snitun.server.peer_manager import PeerManager
+from snitun.utils.aiohttp_client import SniTunClientAioHttp
 
 from ..conftest import Client
 from ..server.const_fernet import create_peer_config
@@ -116,7 +116,7 @@ async def test_flow_client_peer(
     peer_listener: PeerListener,
     peer_manager: PeerManager,
     test_endpoint: list[Client],
-    snitun_client_aiohttp: SniTunClientAioHttp,  
+    snitun_client_aiohttp: SniTunClientAioHttp,
 ) -> None:
     """Test setup of ClientPeer, test flow."""
     client = ClientPeer("127.0.0.1", "8893")
