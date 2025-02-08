@@ -1,16 +1,13 @@
-"""Connector to end resource."""
+"""An asyncio.Transport implementation for multiplexer channel."""
 
 from __future__ import annotations
 
 import asyncio
 from asyncio import BufferedProtocol, Transport
 import asyncio.sslproto
-import logging
 
 from ..exceptions import MultiplexerTransportClose
 from ..multiplexer.channel import MultiplexerChannel
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class ChannelTransport(Transport):
