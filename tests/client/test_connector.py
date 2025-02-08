@@ -14,8 +14,9 @@ from aiohttp.connector import BaseConnector
 if TYPE_CHECKING:
     from aiohttp.tracing import Trace
 
-from snitun.client.connector import ChannelTransport, Connector
+from snitun.client.connector import Connector
 from snitun.multiplexer.core import Multiplexer
+from snitun.multiplexer.transport import ChannelTransport
 from snitun.utils.asyncio import create_eager_task
 
 IP_ADDR = ipaddress.ip_address("8.8.8.8")
