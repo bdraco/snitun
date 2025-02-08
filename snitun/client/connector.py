@@ -321,7 +321,7 @@ class Connector:
     ) -> None:
         """Run the request handler."""
         request_handler.connection_made(new_transport)
-        _LOGGER.info("Connected peer: %s", new_transport.get_extra_info("peername"))
+        _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
