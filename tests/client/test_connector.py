@@ -16,7 +16,6 @@ from snitun.utils.asyncio import create_eager_task
 IP_ADDR = ipaddress.ip_address("8.8.8.8")
 BAD_ADDR = ipaddress.ip_address("8.8.1.1")
 
-from functools import partial
 
 from aiohttp import ClientRequest, ClientTimeout
 from aiohttp.client_proto import ResponseHandler
@@ -33,7 +32,7 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
         channel_transport: ChannelTransport,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args,loop=asyncio.get_running_loop(), **kwargs)
+        super().__init__(*args, loop=asyncio.get_running_loop(), **kwargs)
         self._transport_reader_task = create_eager_task(
             channel_transport.start(),
             name="TransportReaderTask",
