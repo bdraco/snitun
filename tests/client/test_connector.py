@@ -7,20 +7,17 @@ import ssl
 from typing import Any
 
 import aiohttp
-
-from snitun.client.connector import ChannelTransport, Connector
-from snitun.multiplexer.core import Multiplexer
-from snitun.utils.aiohttp_client import SniTunClientAioHttp
-from snitun.utils.asyncio import create_eager_task
-
-IP_ADDR = ipaddress.ip_address("8.8.8.8")
-BAD_ADDR = ipaddress.ip_address("8.8.1.1")
-
-
 from aiohttp import ClientRequest, ClientTimeout
 from aiohttp.client_proto import ResponseHandler
 from aiohttp.connector import BaseConnector
 from aiohttp.tracing import Trace
+
+from snitun.client.connector import ChannelTransport, Connector
+from snitun.multiplexer.core import Multiplexer
+from snitun.utils.asyncio import create_eager_task
+
+IP_ADDR = ipaddress.ip_address("8.8.8.8")
+BAD_ADDR = ipaddress.ip_address("8.8.1.1")
 
 
 class ResponseHandlerWithTransportReader(ResponseHandler):
@@ -69,7 +66,7 @@ class ChannelConnector(BaseConnector):
         channel = await self._multiplexer_server.create_channel(IP_ADDR)
         transport = ChannelTransport(channel)
         protocol = ResponseHandlerWithTransportReader(channel_transport=transport)
-        await self._loop.start_tls(
+        new_transport = await self._loop.start_tls(
             transport,
             protocol,
             self._ssl_context,
@@ -77,21 +74,20 @@ class ChannelConnector(BaseConnector):
             ssl_handshake_timeout=0.1,
             ssl_shutdown_timeout=0.1,
         )
-        protocol.connection_made(transport)
+        protocol.connection_made(new_transport)
         return protocol
 
 
-async def test_init_connector(
+async def test_connector_non_existent_url(
     multiplexer_client: Multiplexer,
     multiplexer_server: Multiplexer,
-    snitun_client_aiohttp: SniTunClientAioHttp,
     connector: Connector,
     client_ssl_context: ssl.SSLContext,
 ) -> None:
-    """Test and init a connector."""
+    """End to end test that connector can fetch a non-existent URL."""
     multiplexer_client._new_connections = connector.handler
-
     connector = ChannelConnector(multiplexer_server, client_ssl_context)
     session = aiohttp.ClientSession(connector=connector)
-    response = await session.get("https://localhost:4242")
-    assert response.status == 200
+    response = await session.get("https://localhost:4242/does-not-exist")
+    assert response.status == 404
+    await session.close()
