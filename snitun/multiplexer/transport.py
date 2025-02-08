@@ -57,8 +57,7 @@ class ChannelTransport(Transport):
 
     async def wait_for_close(self) -> None:
         """Wait for the transport to close."""
-        if self._reader_task:
-            await self._reader_task
+        await self._reader_task
 
     async def _reader(self) -> None:
         """Read from the channel and pass data to the protocol."""
