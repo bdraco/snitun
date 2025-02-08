@@ -1,21 +1,13 @@
 """Test client connector."""
 
-import asyncio
 import ipaddress
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from snitun.client.connector import Connector
-from snitun.exceptions import MultiplexerTransportClose
 from snitun.multiplexer.core import Multiplexer
-
-from ..conftest import Client
 
 IP_ADDR = ipaddress.ip_address("8.8.8.8")
 BAD_ADDR = ipaddress.ip_address("8.8.1.1")
-
-
 
 
 async def test_connector_error_callback(

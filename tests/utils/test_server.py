@@ -13,7 +13,6 @@ from snitun.server.listener_peer import PeerListener
 from snitun.server.peer_manager import PeerManager
 from snitun.utils import server
 
-from ..conftest import Client
 from ..server.const_fernet import FERNET_TOKENS
 
 

@@ -67,7 +67,6 @@ async def test_server() -> AsyncGenerator[list[Client], None]:
     server.close()
 
 
-
 @pytest.fixture
 async def test_client(test_server: list[Client]) -> AsyncGenerator[Client, None]:
     """Create a TCP test client."""
