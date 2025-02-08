@@ -4,7 +4,7 @@ import asyncio
 from contextlib import suppress
 import ipaddress
 import ssl
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import aiohttp
 from aiohttp import ClientRequest, ClientTimeout
@@ -27,11 +27,9 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
 
     def __init__(
         self,
-        *args: Any,
         channel_transport: ChannelTransport,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(*args, loop=asyncio.get_running_loop(), **kwargs)
+        super().__init__(loop=asyncio.get_running_loop())
         self._transport_reader_task = create_eager_task(
             channel_transport.start(),
             name="TransportReaderTask",
