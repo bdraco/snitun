@@ -117,6 +117,27 @@ async def test_connector_disallowed_ip_address(
     sys.version_info < (3, 11),
     reason="Requires Python 3.11+ for working start_tls",
 )
+async def test_connector_missing_certificate(
+    multiplexer_client: Multiplexer,
+    multiplexer_server: Multiplexer,
+    connector_missing_certificate: Connector,
+    client_ssl_context: ssl.SSLContext,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """End to end test that connector with a missing certificate."""
+    multiplexer_client._new_connections = connector_missing_certificate.handler
+    connector = ChannelConnector(multiplexer_server, client_ssl_context)
+    session = aiohttp.ClientSession(connector=connector)
+    with pytest.raises(ClientConnectorError, match="Connection closed by remote host"):
+        await session.get("https://localhost:4242/")
+    await session.close()
+    assert "NO_SHARED_CIPHER" in caplog.text
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11+ for working start_tls",
+)
 async def test_connector_non_existent_url(
     multiplexer_client: Multiplexer,
     multiplexer_server: Multiplexer,

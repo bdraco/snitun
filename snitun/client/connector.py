@@ -24,6 +24,25 @@ from ..utils.asyncio import create_eager_task
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _cancel_transport_reader_task(
+    transport_reader_task: asyncio.Task[None],
+) -> None:
+    try:
+        await transport_reader_task
+    except asyncio.CancelledError:
+        # Don't swallow cancellation
+        if (
+            sys.version_info >= (3, 11)
+            and (current_task := asyncio.current_task())
+            and current_task.cancelling()
+        ):
+            raise
+    except MultiplexerTransportClose:
+        pass
+    except Exception:
+        _LOGGER.exception("Error in transport_reader_task")
+
+
 class Connector:
     """Connector to end resource."""
 
@@ -97,20 +116,7 @@ class Connector:
             )
             transport_reader_task.cancel()
             await multiplexer.delete_channel(channel)
-            try:
-                await transport_reader_task
-            except asyncio.CancelledError:
-                # Don't swallow cancellation
-                if (
-                    sys.version_info >= (3, 11)
-                    and (current_task := asyncio.current_task())
-                    and current_task.cancelling()
-                ):
-                    raise
-            except MultiplexerTransportClose:
-                pass
-            except Exception:
-                _LOGGER.exception("Error in transport_reader_task")
+            await _cancel_transport_reader_task(transport_reader_task)
             return
 
         # Now that we have the connection upgraded to TLS, we can
