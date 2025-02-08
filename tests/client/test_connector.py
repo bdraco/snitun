@@ -68,7 +68,6 @@ class ChannelConnector(BaseConnector):
     ) -> ResponseHandler:
         """Create connection."""
         channel = await self._multiplexer_server.create_channel(IP_ADDR)
-        await asyncio.sleep(0.1)
         transport = ChannelTransport(channel)
         protocol = ResponseHandlerWithTransportReader(
             channel_transport=transport,
