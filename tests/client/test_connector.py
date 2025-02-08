@@ -33,7 +33,7 @@ class ResponseHandlerWithTransportReader(ResponseHandler):
         channel_transport: ChannelTransport,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(*args,loop=asyncio.get_running_loop(), **kwargs)
         self._transport_reader_task = create_eager_task(
             channel_transport.start(),
             name="TransportReaderTask",
@@ -69,10 +69,7 @@ class ChannelConnector(BaseConnector):
         """Create connection."""
         channel = await self._multiplexer_server.create_channel(IP_ADDR)
         transport = ChannelTransport(channel)
-        protocol = ResponseHandlerWithTransportReader(
-            channel_transport=transport,
-            loop=asyncio.get_running_loop(),
-        )
+        protocol = ResponseHandlerWithTransportReader(channel_transport=transport)
         await self._loop.start_tls(
             transport,
             protocol,
