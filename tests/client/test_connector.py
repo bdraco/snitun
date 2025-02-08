@@ -217,7 +217,8 @@ async def test_connector_valid_url_broken_buffering(
     # Simulate a broken buffering
     assert server_channel_transport is not None
     ssl_proto = cast(
-        asyncio.sslproto.SSLProtocol, server_channel_transport.get_protocol(),
+        asyncio.sslproto.SSLProtocol,
+        server_channel_transport.get_protocol(),
     )
     ssl_proto.get_buffer = lambda _: b""
     task = await session.get("https://localhost:4242/")
