@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator, Generator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import ipaddress
 import logging
@@ -303,6 +304,12 @@ async def server_ssl_context(tls_certificate: trustme.LeafCert) -> ssl.SSLContex
 
 
 @pytest.fixture
+async def server_ssl_context_missing_cert() -> ssl.SSLContext:
+    """Create a SSL context for the server without a certificate."""
+    return ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+
+@pytest.fixture
 async def client_ssl_context(tls_certificate_authority: trustme.CA) -> ssl.SSLContext:
     """Create a SSL context for the client."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -310,11 +317,11 @@ async def client_ssl_context(tls_certificate_authority: trustme.CA) -> ssl.SSLCo
     return context
 
 
-@pytest.fixture
-async def snitun_client_aiohttp(
+@asynccontextmanager
+async def make_snitun_client_aiohttp(
     aiohttp_server: AiohttpServer,
     server_ssl_context: ssl.SSLContext,
-) -> AsyncGenerator[SniTunClientAioHttp, None]:
+) -> SniTunClientAioHttp:
     """Create a SniTunClientAioHttp."""
     app = web.Application()
     app.add_routes([web.get("/", lambda _: web.Response(text="Hello world"))])
@@ -323,6 +330,28 @@ async def snitun_client_aiohttp(
     yield client
     await client.stop()
     await server.close()
+
+
+@pytest.fixture
+async def snitun_client_aiohttp(
+    aiohttp_server: AiohttpServer,
+    server_ssl_context: ssl.SSLContext,
+) -> AsyncGenerator[SniTunClientAioHttp, None]:
+    """Create a SniTunClientAioHttp."""
+    async with make_snitun_client_aiohttp(aiohttp_server, server_ssl_context) as client:
+        yield client
+
+
+@pytest.fixture
+async def snitun_client_aiohttp_missing_certificate(
+    aiohttp_server: AiohttpServer,
+    server_ssl_context_missing_cert: ssl.SSLContext,
+) -> AsyncGenerator[SniTunClientAioHttp, None]:
+    """Create a SniTunClientAioHttp with the certificate missing."""
+    async with make_snitun_client_aiohttp(
+        aiohttp_server, server_ssl_context_missing_cert,
+    ) as client:
+        yield client
 
 
 @pytest.fixture
