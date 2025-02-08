@@ -168,9 +168,8 @@ class ChannelTransport(Transport):
         No data will be passed to the protocol's data_received()
         method until resume_reading() is called.
         """
-        if self._pause_future is not None:
-            return
-        self._pause_future = self._loop.create_future()
+        if self._pause_future is None:
+            self._pause_future = self._loop.create_future()
 
     def resume_reading(self) -> None:
         """Resume the receiving end.
