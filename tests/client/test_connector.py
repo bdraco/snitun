@@ -6,11 +6,12 @@ import ipaddress
 import ssl
 import sys
 from typing import TYPE_CHECKING
-import pytest
+
 import aiohttp
 from aiohttp import ClientRequest, ClientTimeout
 from aiohttp.client_proto import ResponseHandler
 from aiohttp.connector import BaseConnector
+import pytest
 
 if TYPE_CHECKING:
     from aiohttp.tracing import Trace
@@ -80,7 +81,9 @@ class ChannelConnector(BaseConnector):
         return protocol
 
 
-@pytest.mark.skipif(sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls")
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls",
+)
 async def test_connector_non_existent_url(
     multiplexer_client: Multiplexer,
     multiplexer_server: Multiplexer,
@@ -96,7 +99,9 @@ async def test_connector_non_existent_url(
     await session.close()
 
 
-@pytest.mark.skipif(sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls")
+@pytest.mark.skipif(
+    sys.version_info < (3, 11), reason="Requires Python 3.11+ for working start_tls",
+)
 async def test_connector_valid_url(
     multiplexer_client: Multiplexer,
     multiplexer_server: Multiplexer,
