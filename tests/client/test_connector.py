@@ -73,8 +73,6 @@ class ChannelConnector(BaseConnector):
             protocol,
             self._ssl_context,
             server_side=False,
-            ssl_handshake_timeout=0.1,
-            ssl_shutdown_timeout=0.1,
         )
         protocol.connection_made(new_transport)
         return protocol
