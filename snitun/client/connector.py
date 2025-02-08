@@ -49,9 +49,7 @@ class Connector:
 
     def _whitelist_policy(self, ip_address: ipaddress.IPv4Address) -> bool:
         """Return True if the ip address can access to endpoint."""
-        if self._whitelist_enabled:
-            return ip_address in self._whitelist
-        return True
+        return not self._whitelist_enabled or ip_address in self._whitelist
 
     async def _start_server_tls(
         self,
