@@ -121,9 +121,9 @@ class Connector:
 
         # Now that we have the connection upgraded to TLS, we can
         # start the request handler and serve the connection.
-        request_handler.connection_made(new_transport)
         _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
+            request_handler.connection_made(new_transport)
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
             _LOGGER.debug(
