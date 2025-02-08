@@ -27,6 +27,8 @@ _LOGGER = logging.getLogger(__name__)
 async def _cancel_transport_reader_task(
     transport_reader_task: asyncio.Task[None],
 ) -> None:
+    """Cancel the transport reader task."""
+    transport_reader_task.cancel()
     try:
         await transport_reader_task
     except asyncio.CancelledError:
@@ -114,8 +116,8 @@ class Connector:
                 channel.id,
                 ex,
             )
-            transport_reader_task.cancel()
-            await multiplexer.delete_channel(channel)
+            with suppress(MultiplexerTransportError):
+                await multiplexer.delete_channel(channel)
             await _cancel_transport_reader_task(transport_reader_task)
             return
 
