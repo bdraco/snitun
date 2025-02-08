@@ -83,7 +83,8 @@ class ChannelConnector(BaseConnector):
             )
         except MultiplexerTransportClose as ex:
             raise ClientConnectorError(
-                req.connection_key, OSError(None, "Connection closed by remote host"),
+                req.connection_key,
+                OSError(None, "Connection closed by remote host"),
             ) from ex
         protocol.connection_made(new_transport)
         return protocol
@@ -102,7 +103,9 @@ async def test_connector_disallowed_ip_address(
     """End to end test from connecting from a non-whitelisted IP."""
     multiplexer_client._new_connections = connector.handler
     connector = ChannelConnector(
-        multiplexer_server, client_ssl_context, ip_address=BAD_ADDR,
+        multiplexer_server,
+        client_ssl_context,
+        ip_address=BAD_ADDR,
     )
     session = aiohttp.ClientSession(connector=connector)
     with pytest.raises(ClientConnectorError, match="Connection closed by remote host"):
