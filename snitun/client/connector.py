@@ -51,17 +51,36 @@ class Connector:
         """Return True if the ip address can access to endpoint."""
         return not self._whitelist_enabled or ip_address in self._whitelist
 
-    async def _start_server_tls(
+    async def handler(
         self,
-        transport: ChannelTransport,
-        request_handler: RequestHandler,
         multiplexer: Multiplexer,
         channel: MultiplexerChannel,
-        transport_reader_task: asyncio.Task[None],
-    ) -> asyncio.Transport | None:
-        """Start TLS on the transport."""
+    ) -> None:
+        """Handle new connection from SNIProxy."""
+        _LOGGER.debug("New connection from %s", channel.ip_address)
+
+        # Check policy
+        if not self._whitelist_policy(channel.ip_address):
+            _LOGGER.warning("Block request from %s per policy", channel.ip_address)
+            await multiplexer.delete_channel(channel)
+            return
+
+        transport = ChannelTransport(channel)
+        # The request_handler is the aiohttp RequestHandler
+        # that is generated from the protocol_factory that
+        # was passed in the constructor.
+        request_handler = self._protocol_factory()
+        _LOGGER.debug("Request handler created for %s", channel.id)
+        transport_reader_task = create_eager_task(
+            transport.start(),
+            name="TransportReaderTask",
+            loop=self._loop,
+        )
+        _LOGGER.debug("Started transport reader task for %s", channel.id)
+
+        # Upgrade the transport to TLS
         try:
-            return await self._loop.start_tls(
+            new_transport = await self._loop.start_tls(
                 transport,
                 request_handler,
                 self._ssl_context,
@@ -93,65 +112,10 @@ class Connector:
                 pass
             except Exception:
                 _LOGGER.exception("Error in transport_reader_task")
-            return None
-
-    async def handler(
-        self,
-        multiplexer: Multiplexer,
-        channel: MultiplexerChannel,
-    ) -> None:
-        """Handle new connection from SNIProxy."""
-        _LOGGER.debug("New connection from %s", channel.ip_address)
-
-        # Check policy
-        if not self._whitelist_policy(channel.ip_address):
-            _LOGGER.warning("Block request from %s per policy", channel.ip_address)
-            await multiplexer.delete_channel(channel)
-            return
-
-        transport = ChannelTransport(channel)
-        # The request_handler is the aiohttp RequestHandler
-        # that is generated from the protocol_factory that
-        # was passed in the constructor.
-        request_handler = self._protocol_factory()
-        _LOGGER.debug("Request handler created for %s", channel.id)
-        transport_reader_task = create_eager_task(
-            transport.start(),
-            name="TransportReaderTask",
-            loop=self._loop,
-        )
-        _LOGGER.debug("Started transport reader task for %s", channel.id)
-        if not (
-            new_transport := await self._start_server_tls(
-                transport,
-                request_handler,
-                multiplexer,
-                channel,
-                transport_reader_task,
-            )
-        ):
-            _LOGGER.debug("Failed to start TLS for %s", channel.id)
             return
 
         # Now that we have the connection upgraded to TLS, we can
         # start the request handler and serve the connection.
-        await self._run_request_handler(
-            request_handler,
-            new_transport,
-            multiplexer,
-            channel,
-            transport_reader_task,
-        )
-
-    async def _run_request_handler(
-        self,
-        request_handler: RequestHandler,
-        new_transport: asyncio.Transport,
-        multiplexer: Multiplexer,
-        channel: MultiplexerChannel,
-        transport_reader_task: asyncio.Task[None],
-    ) -> None:
-        """Run the request handler."""
         request_handler.connection_made(new_transport)
         _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
