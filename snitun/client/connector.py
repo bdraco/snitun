@@ -77,7 +77,7 @@ class ChannelTransport(Transport):
                 from_peer = await self._channel.read()
             except MultiplexerTransportClose as exc:
                 self._force_close(exc)
-                raise
+                return  # normal close
             except (SystemExit, KeyboardInterrupt):
                 raise
             except BaseException as exc:
@@ -325,14 +325,20 @@ class Connector:
         try:
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
-            _LOGGER.debug("Transport closed by endpoint for %s", channel.id)
+            _LOGGER.debug(
+                "Transport closed error for %s (%s)",
+                channel.ip_address,
+                channel.id,
+            )
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
             request_handler.connection_lost(ex)
-        except MultiplexerTransportClose as ex:
-            _LOGGER.debug("Peer close connection for %s", channel.id)
-            request_handler.connection_lost(ex)
         else:
+            _LOGGER.debug(
+                "Peer close connection for %s (%s)",
+                channel.ip_address,
+                channel.id,
+            )
             request_handler.connection_lost(None)
         finally:
             new_transport.close()
