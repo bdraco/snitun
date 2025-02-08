@@ -87,21 +87,22 @@ class Connector:
             return
 
         transport = ChannelTransport(channel)
-        # The request_handler is the aiohttp RequestHandler
-        # that is generated from the protocol_factory that
-        # was passed in the constructor.
-        request_handler = self._protocol_factory()
         transport_reader_task = create_eager_task(
             transport.start(),
             name="TransportReaderTask",
             loop=self._loop,
         )
 
+        # The request_handler is the aiohttp RequestHandler
+        # that is generated from the protocol_factory that
+        # was passed in the constructor.
+        request_handler_protocol = self._protocol_factory()
+
         # Upgrade the transport to TLS
         try:
             new_transport = await self._loop.start_tls(
                 transport,
-                request_handler,
+                request_handler_protocol,
                 self._ssl_context,
                 server_side=True,
             )
@@ -123,7 +124,7 @@ class Connector:
         # start the request handler and serve the connection.
         _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
-            request_handler.connection_made(new_transport)
+            request_handler_protocol.connection_made(new_transport)
             await transport_reader_task
         except (MultiplexerTransportError, OSError, RuntimeError) as ex:
             _LOGGER.debug(
@@ -133,13 +134,13 @@ class Connector:
             )
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
-            request_handler.connection_lost(ex)
+            request_handler_protocol.connection_lost(ex)
         else:
             _LOGGER.debug(
                 "Peer close connection for %s (%s)",
                 channel.ip_address,
                 channel.id,
             )
-            request_handler.connection_lost(None)
+            request_handler_protocol.connection_lost(None)
         finally:
             new_transport.close()

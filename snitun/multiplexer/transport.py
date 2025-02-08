@@ -19,7 +19,7 @@ class ChannelTransport(Transport):
         """Initialize ChannelTransport."""
         self._channel = channel
         self._loop = asyncio.get_running_loop()
-        self._protocol: asyncio.sslproto.SSLProtocol | None = None
+        self._protocol: asyncio.BufferedProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
@@ -59,8 +59,8 @@ class ChannelTransport(Transport):
 
             try:
                 from_peer = await self._channel.read()
-            except MultiplexerTransportClose as exc:
-                self._force_close(exc)
+            except MultiplexerTransportClose:
+                self._force_close(None)
                 return  # normal close
             except (SystemExit, KeyboardInterrupt):
                 raise
@@ -123,7 +123,7 @@ class ChannelTransport(Transport):
                 )
                 raise
 
-    def _force_close(self, exc: Exception) -> None:
+    def _force_close(self, exc: Exception | None) -> None:
         """Force close the transport."""
         self._channel.close()
         self._release_pause_future()

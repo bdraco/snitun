@@ -1,11 +1,13 @@
 """Test client connector."""
 
 import asyncio
+import asyncio.sslproto
 from contextlib import suppress
 import ipaddress
 import ssl
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+from unittest.mock import patch
 
 import aiohttp
 from aiohttp import ClientConnectorError, ClientRequest, ClientTimeout
@@ -14,6 +16,7 @@ from aiohttp.connector import BaseConnector
 import pytest
 
 from snitun.exceptions import MultiplexerTransportClose
+from snitun.multiplexer.channel import MultiplexerChannel
 
 if TYPE_CHECKING:
     from aiohttp.tracing import Trace
@@ -86,6 +89,11 @@ class ChannelConnector(BaseConnector):
                 req.connection_key,
                 OSError(None, "Connection closed by remote host"),
             ) from ex
+        if not new_transport:
+            raise ClientConnectorError(
+                req.connection_key,
+                OSError(None, "Connection aborted by remote host"),
+            )
         protocol.connection_made(new_transport)
         return protocol
 
@@ -108,7 +116,7 @@ async def test_connector_disallowed_ip_address(
         ip_address=BAD_ADDR,
     )
     session = aiohttp.ClientSession(connector=connector)
-    with pytest.raises(ClientConnectorError, match="Connection closed by remote host"):
+    with pytest.raises(ClientConnectorError, match="Connection aborted by remote host"):
         await session.get("https://localhost:4242/does-not-exist")
     await session.close()
 
@@ -128,7 +136,7 @@ async def test_connector_missing_certificate(
     multiplexer_client._new_connections = connector_missing_certificate.handler
     connector = ChannelConnector(multiplexer_server, client_ssl_context)
     session = aiohttp.ClientSession(connector=connector)
-    with pytest.raises(ClientConnectorError, match="Connection closed by remote host"):
+    with pytest.raises(ClientConnectorError, match="Connection aborted by remote host"):
         await session.get("https://localhost:4242/")
     await session.close()
     assert "NO_SHARED_CIPHER" in caplog.text
@@ -171,4 +179,50 @@ async def test_connector_valid_url(
     assert response.status == 200
     content = await response.read()
     assert content == b"Hello world"
+    await session.close()
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="Requires Python 3.11+ for working start_tls",
+)
+async def test_connector_valid_url_broken_buffering(
+    multiplexer_client: Multiplexer,
+    multiplexer_server: Multiplexer,
+    connector: Connector,
+    client_ssl_context: ssl.SSLContext,
+) -> None:
+    """End to end test that connector can fetch a non-existent URL."""
+    multiplexer_client._new_connections = connector.handler
+    connector = ChannelConnector(multiplexer_server, client_ssl_context)
+    session = aiohttp.ClientSession(connector=connector)
+
+    server_channel_transport: ChannelTransport | None = None
+    transport_creation_calls = 0
+
+    def _save_transport(channel: MultiplexerChannel) -> ChannelTransport:
+        nonlocal server_channel_transport, transport_creation_calls
+        transport_creation_calls += 1
+        assert transport_creation_calls == 1
+        server_channel_transport = ChannelTransport(channel)
+        return server_channel_transport
+
+    with patch("snitun.client.connector.ChannelTransport", _save_transport):
+        task = asyncio.create_task(session.get("https://localhost:4242/"))
+        response = await task
+        assert response.status == 200
+        content = await response.read()
+        assert content == b"Hello world"
+
+    # Simulate a broken buffering
+    assert server_channel_transport is not None
+    ssl_proto = cast(
+        asyncio.sslproto.SSLProtocol, server_channel_transport.get_protocol(),
+    )
+    ssl_proto.get_buffer = lambda _: b""
+    task = await session.get("https://localhost:4242/")
+    assert response.status == 200
+    content = await response.read()
+    assert content == b"Hello world"
+
     await session.close()
