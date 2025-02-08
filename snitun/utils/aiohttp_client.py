@@ -23,7 +23,7 @@ class SniTunClientAioHttp:
     def __init__(
         self,
         runner: AppRunner,
-        context: ssl.SSLContext | None,
+        context: ssl.SSLContext,
         snitun_server: str,
         snitun_port: int | None = None,
     ) -> None:

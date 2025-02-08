@@ -200,7 +200,7 @@ class Connector:
     def __init__(
         self,
         protocol_factory: Callable[[], RequestHandler],
-        ssl_context: SSLContext | None,
+        ssl_context: SSLContext,
         whitelist: bool = False,
         endpoint_connection_error_callback: Coroutine[Any, Any, None] | None = None,
     ) -> None:
@@ -287,18 +287,16 @@ class Connector:
             loop=self._loop,
         )
         _LOGGER.debug("Started transport reader task for %s", channel.id)
-        if self._ssl_context:
-            new_transport = await self._start_tls(
+        if not (
+            new_transport := await self._start_tls(
                 transport,
                 request_handler,
                 multiplexer,
                 channel,
                 transport_reader_task,
             )
-            if not new_transport:
-                return
-        else:
-            new_transport = transport
+        ):
+            return
 
         request_handler.connection_made(new_transport)
         _LOGGER.info("Connected peer: %s", new_transport.get_extra_info("peername"))
