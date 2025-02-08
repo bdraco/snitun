@@ -64,7 +64,7 @@ class Connector:
             return
 
         transport = ChannelTransport(channel)
-        await transport.start()
+        await transport.start_reader()
         # The request_handler is the aiohttp RequestHandler
         # that is generated from the protocol_factory that
         # was passed in the constructor.
@@ -89,7 +89,7 @@ class Connector:
             )
             with suppress(MultiplexerTransportError):
                 await multiplexer.delete_channel(channel)
-            await transport.stop()
+            await transport.stop_reader()
             return
 
         # Now that we have the connection upgraded to TLS, we can

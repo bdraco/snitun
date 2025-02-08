@@ -51,7 +51,7 @@ class ChannelTransport(Transport):
         if not self._channel.closing:
             self._channel.write_no_wait(data)
 
-    async def start(self) -> None:
+    async def start_reader(self) -> None:
         """Start reading from the channel."""
         assert not self._reader_task, "Transport already started"
         self._reader_task = create_eager_task(
@@ -137,7 +137,7 @@ class ChannelTransport(Transport):
                 )
                 raise
 
-    async def stop(self) -> None:
+    async def stop_reader(self) -> None:
         """Stop the transport."""
         self._reader_task.cancel()
         try:
