@@ -93,3 +93,20 @@ async def test_connector_non_existent_url(
     response = await session.get("https://localhost:4242/does-not-exist")
     assert response.status == 404
     await session.close()
+
+
+async def test_connector_valid_url(
+    multiplexer_client: Multiplexer,
+    multiplexer_server: Multiplexer,
+    connector: Connector,
+    client_ssl_context: ssl.SSLContext,
+) -> None:
+    """End to end test that connector can fetch a non-existent URL."""
+    multiplexer_client._new_connections = connector.handler
+    connector = ChannelConnector(multiplexer_server, client_ssl_context)
+    session = aiohttp.ClientSession(connector=connector)
+    response = await session.get("https://localhost:4242/")
+    assert response.status == 200
+    content = await response.read()
+    assert content == b"Hello world"
+    await session.close()
