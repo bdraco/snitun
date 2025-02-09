@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from asyncio import Transport
 import asyncio.sslproto
+from collections.abc import Callable
 import logging
 import sys
 
 from ..exceptions import MultiplexerTransportClose
 from ..multiplexer.channel import MultiplexerChannel
 from ..utils.asyncio import create_eager_task
+from .core import Multiplexer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +50,7 @@ class ChannelTransport(Transport):
 
     _start_tls_compatible = True
 
-    def __init__(self, channel: MultiplexerChannel) -> None:
+    def __init__(self, channel: MultiplexerChannel, multiplexer: Multiplexer) -> None:
         """Initialize ChannelTransport."""
         self._channel = channel
         self._loop = asyncio.get_running_loop()
@@ -56,6 +58,8 @@ class ChannelTransport(Transport):
         self._pause_future: asyncio.Future[None] | None = None
         self._reader_task: asyncio.Task[None] | None = None
         self._protocol_paused: bool = False
+        self._cancel_resume_writing: Callable[[], None] | None = None
+        self._multiplexer = multiplexer
         super().__init__(extra={"peername": (str(channel.ip_address), 0)})
 
     def start_reader(self) -> None:
@@ -82,19 +86,31 @@ class ChannelTransport(Transport):
         """Close the underlying channel."""
         self._channel.close()
         self._release_pause_future()
+        self._cancel_resume_writing_callback()
+
+    def _cancel_resume_writing_callback(self) -> None:
+        """Cancel the resume writing callback."""
+        if self._cancel_resume_writing is not None:
+            self._cancel_resume_writing()
+            self._cancel_resume_writing = None
 
     def write(self, data: bytes) -> None:
         """Write data to the channel."""
         if not self._channel.closing:
             self._channel.write_no_wait(data)
-        if self._channel.should_pause():
-            if not self._protocol_paused:
-                self._call_protocol_method("pause_writing")
-                self._protocol_paused = True
-        elif self._protocol_paused:
-            self._call_protocol_method("resume_writing")
-            self._protocol.resume_writing()
-            self._protocol_paused = False
+        if not self._protocol_paused and self._multiplexer.should_pause:
+            self._call_protocol_method("pause_writing")
+            self._protocol_paused = True
+            self._cancel_resume_writing = (
+                self._multiplexer.register_resume_writing_callback(
+                    self._resume_protocol,
+                )
+            )
+
+    def _resume_protocol(self) -> None:
+        """Resume the protocol."""
+        self._call_protocol_method("resume_writing")
+        self._protocol_paused = False
 
     def _call_protocol_method(self, method_name: str) -> None:
         """Call a method on the protocol."""
@@ -169,6 +185,7 @@ class ChannelTransport(Transport):
         """Force close the transport."""
         self._channel.close()
         self._release_pause_future()
+        self._cancel_resume_writing_callback()
         if self._protocol is not None:
             self._loop.call_soon(self._protocol.connection_lost, exc)
 

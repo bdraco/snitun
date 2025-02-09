@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from functools import partial
 import ipaddress
 import logging
 import os
@@ -57,9 +58,11 @@ class Multiplexer:
         "_loop",
         "_new_connections",
         "_queue",
+        "_queue_max",
         "_ranged_timeout",
         "_read_task",
         "_reader",
+        "_resume_writing_callbacks",
         "_throttling",
         "_timed_out",
         "_write_task",
@@ -79,7 +82,8 @@ class Multiplexer:
         self._reader = reader
         self._writer = writer
         self._loop = asyncio.get_event_loop()
-        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(12000)
+        self._queue_max = 12000
+        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(self._queue_max)
         self._healthy = asyncio.Event()
         self._healthy.set()
         self._read_task = self._loop.create_task(self._read_from_peer_loop())
@@ -99,6 +103,7 @@ class Multiplexer:
             # an will yield for one iteration of the event loop
             # and we do not have that level of precision anyways
             self._throttling = 0.0 if throttling < 500 else 1 / throttling
+        self._resume_writing_callbacks: set[Callable[[], None]] = set()
 
     @property
     def is_connected(self) -> bool:
@@ -110,6 +115,16 @@ class Multiplexer:
         self._timed_out = True
         _LOGGER.error("Timed out reading and writing to peer")
         self._write_task.cancel()
+
+    @property
+    def should_pause(self) -> bool:
+        """Return True if the write transport should pause."""
+        return self._queue.qsize() > self._queue_max / 2
+
+    def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to resume the protocol."""
+        self._resume_writing_callbacks.add(callback)
+        return partial(self._resume_writing_callbacks.discard, callback)
 
     def wait(self) -> asyncio.Future[None]:
         """Block until the connection is closed.
@@ -189,6 +204,12 @@ class Multiplexer:
                 self._write_message(to_peer)
                 await self._writer.drain()
                 self._ranged_timeout.reschedule()
+                # If writers are paused and we have space in the queue
+                # callback the writers to resume writing
+                if self._resume_writing_callbacks and not self.should_pause:
+                    for callback_ in self._resume_writing_callbacks:
+                        callback_()
+                    self._resume_writing_callbacks.clear()
         except asyncio.CancelledError:
             _LOGGER.debug("Write canceling")
             with suppress(OSError):
