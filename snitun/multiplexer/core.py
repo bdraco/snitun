@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from functools import partial
 import ipaddress
 import logging
 import os
 import struct
+import sys
 from typing import Any
 
 from ..exceptions import (
@@ -16,7 +18,7 @@ from ..exceptions import (
     MultiplexerTransportDecrypt,
     MultiplexerTransportError,
 )
-from ..utils.asyncio import asyncio_timeout
+from ..utils.asyncio import RangedTimeout, asyncio_timeout, make_task_waiter_future
 from ..utils.ipaddress import bytes_to_ip_address
 from .channel import MultiplexerChannel
 from .const import OUTGOING_QUEUE_MAX_BYTES_CHANNEL
@@ -33,7 +35,8 @@ from .queue import MultiplexerQueue
 
 _LOGGER = logging.getLogger(__name__)
 
-PEER_TCP_TIMEOUT = 90
+PEER_TCP_MIN_TIMEOUT = 90
+PEER_TCP_MAX_TIMEOUT = 120
 
 # |-----------------HEADER---------------------------------|
 # |------ID-----|--FLAG--|--SIZE--|---------EXTRA ---------|
@@ -46,6 +49,10 @@ PEER_TCP_TIMEOUT = 90
 # 11s: 11 bytes: Extra      - data + random padding
 HEADER_STRUCT = struct.Struct(">16sBI11s")
 
+HIGH_WATER_MARK = 10000
+LOW_WATER_MARK = 2000
+QUEUE_MAX = 12000
+
 
 class Multiplexer:
     """Multiplexer Socket wrapper."""
@@ -56,10 +63,15 @@ class Multiplexer:
         "_healthy",
         "_loop",
         "_new_connections",
-        "_processing_task",
         "_queue",
+        "_queue_max",
+        "_ranged_timeout",
+        "_read_task",
         "_reader",
+        "_resume_writing_callbacks",
         "_throttling",
+        "_timed_out",
+        "_write_task",
         "_writer",
     ]
 
@@ -78,30 +90,66 @@ class Multiplexer:
         self._loop = asyncio.get_event_loop()
         self._queue = MultiplexerQueue(OUTGOING_QUEUE_MAX_BYTES_CHANNEL)
         self._healthy = asyncio.Event()
-        self._processing_task = self._loop.create_task(self._runner())
+        self._healthy.set()
+        self._read_task = self._loop.create_task(self._read_from_peer_loop())
+        self._write_task = self._loop.create_task(self._write_to_peer_loop())
+        self._ranged_timeout = RangedTimeout(
+            PEER_TCP_MIN_TIMEOUT,
+            PEER_TCP_MAX_TIMEOUT,
+            self._on_timeout,
+        )
+        self._timed_out: bool = False
         self._channels: dict[MultiplexerChannelId, MultiplexerChannel] = {}
         self._new_connections = new_connections
-        self._throttling = 1 / throttling if throttling else None
+        self._throttling: float | None = None
+        if throttling:
+            # If throttling is less than 5ms, change it to
+            # 0.0 since asyncio.sleep(0.0) is much more efficient
+            # an will yield for one iteration of the event loop
+            # and we do not have that level of precision anyways
+            self._throttling = 0.0 if throttling < 500 else 1 / throttling
+        self._resume_writing_callbacks: set[Callable[[], None]] = set()
 
     @property
     def is_connected(self) -> bool:
         """Return True is they is connected."""
-        return not self._processing_task.done()
+        return not self._write_task.done()
 
-    def wait(self) -> asyncio.Task:
+    def _on_timeout(self) -> None:
+        """Handle timeout."""
+        self._timed_out = True
+        _LOGGER.error("Timed out reading and writing to peer")
+        self._write_task.cancel()
+
+    @property
+    def should_pause(self) -> bool:
+        """Return True if the write transport should pause."""
+        return self._queue.qsize() > HIGH_WATER_MARK
+
+    @property
+    def should_resume(self) -> bool:
+        """Return True if the write transport should resume."""
+        return self._queue.qsize() < LOW_WATER_MARK
+
+    def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to resume the protocol."""
+        self._resume_writing_callbacks.add(callback)
+        return partial(self._resume_writing_callbacks.discard, callback)
+
+    def wait(self) -> asyncio.Future[None]:
         """Block until the connection is closed.
 
         Return a awaitable object.
         """
-        return asyncio.shield(self._processing_task)
+        return make_task_waiter_future(self._write_task)
 
     def shutdown(self) -> None:
         """Shutdown connection."""
-        if self._processing_task.done():
+        if self._write_task.done():
             return
 
         _LOGGER.debug("Cancel connection")
-        self._processing_task.cancel()
+        self._write_task.cancel()
         self._graceful_channel_shutdown()
 
     def _graceful_channel_shutdown(self) -> None:
@@ -114,17 +162,16 @@ class Multiplexer:
         """Send a ping flow message to hold the connection open."""
         self._healthy.clear()
         try:
-            self._write_message(
-                MultiplexerMessage(
-                    MultiplexerChannelId(os.urandom(16)),
-                    CHANNEL_FLOW_PING,
-                    b"",
-                    b"ping",
-                ),
+            message = MultiplexerMessage(
+                MultiplexerChannelId(os.urandom(16)),
+                CHANNEL_FLOW_PING,
+                b"",
+                b"ping",
             )
+            self._write_message(message)
 
             # Wait until pong is received
-            async with asyncio_timeout.timeout(PEER_TCP_TIMEOUT):
+            async with asyncio_timeout.timeout(PEER_TCP_MIN_TIMEOUT):
                 await self._healthy.wait()
 
         except TimeoutError:
@@ -137,83 +184,62 @@ class Multiplexer:
             self._loop.call_soon(self.shutdown)
             raise MultiplexerTransportError from None
 
-    async def _runner(self) -> None:
-        """Runner task of processing stream."""
+    async def _read_from_peer_loop(self) -> None:
+        """Read from peer loop."""
         transport = self._writer.transport
-        from_peer = None
-        to_peer = None
-
-        # Process stream
-        self._healthy.set()
         try:
             while not transport.is_closing():
-                if not from_peer:
-                    from_peer = self._loop.create_task(self._reader.readexactly(32))
-
-                if not to_peer:
-                    to_peer = self._loop.create_task(self._queue.get())
-
-                # Wait until data need to be processed
-                async with asyncio_timeout.timeout(PEER_TCP_TIMEOUT):
-                    await asyncio.wait(
-                        [from_peer, to_peer],
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-
-                # From peer
-                if from_peer.done():
-                    if from_peer.exception():
-                        raise from_peer.exception()
-                    await self._read_message(from_peer.result())
-                    from_peer = None
-
-                # To peer
-                if to_peer.done():
-                    if to_peer.exception():
-                        raise to_peer.exception()
-                    self._write_message(to_peer.result())
-                    to_peer = None
-
-                    # Flush buffer
-                    await self._writer.drain()
-
-                # throttling
-                if not self._throttling:
-                    continue
-                await asyncio.sleep(self._throttling)
-
-        except (asyncio.CancelledError, TimeoutError):
+                await self._read_message()
+                self._ranged_timeout.reschedule()
+                if self._throttling is not None:
+                    await asyncio.sleep(self._throttling)
+        except asyncio.CancelledError:
             _LOGGER.debug("Receive canceling")
-            with suppress(OSError):
-                self._writer.write_eof()
-                await self._writer.drain()
-
+            raise
         except (
             MultiplexerTransportClose,
             asyncio.IncompleteReadError,
-            ConnectionResetError,
             OSError,
         ):
             _LOGGER.debug("Transport was closed")
-
         finally:
-            # Cleanup peer writer
-            if to_peer and not to_peer.done():
-                to_peer.cancel()
+            self._write_task.cancel()
 
-            # Cleanup peer reader
-            if from_peer:
-                if not from_peer.done():
-                    from_peer.cancel()
-                else:
-                    # Avoid exception was never retrieved
-                    from_peer.exception()
-
+    async def _write_to_peer_loop(self) -> None:
+        """Write to peer loop."""
+        transport = self._writer.transport
+        try:
+            while not transport.is_closing():
+                to_peer = await self._queue.get()
+                self._write_message(to_peer)
+                await self._writer.drain()
+                self._ranged_timeout.reschedule()
+                # If writers are paused and we have space in the queue
+                # callback the writers to resume writing
+                if self._resume_writing_callbacks and self.should_resume:
+                    _LOGGER.debug("Calling callbacks to resume writing")
+                    for callback_ in self._resume_writing_callbacks:
+                        callback_()
+                    self._resume_writing_callbacks.clear()
+        except asyncio.CancelledError:
+            _LOGGER.debug("Write canceling")
+            with suppress(OSError):
+                self._writer.write_eof()
+                await self._writer.drain()
+            if (
+                sys.version_info >= (3, 11)
+                and (current_task := asyncio.current_task())
+                and current_task.cancelling()
+            ):
+                raise
+        except (MultiplexerTransportClose, OSError):
+            _LOGGER.debug("Transport was closed")
+        finally:
+            self._read_task.cancel()
             # Cleanup transport
-            if not transport.is_closing():
+            if not self._writer.transport.is_closing():
                 with suppress(OSError):
                     self._writer.close()
-
             self._graceful_channel_shutdown()
             _LOGGER.debug("Multiplexer connection is closed")
 
@@ -231,10 +257,9 @@ class Multiplexer:
         except RuntimeError:
             raise MultiplexerTransportClose from None
 
-    async def _read_message(self, header: bytes) -> None:
+    async def _read_message(self) -> None:
         """Read message from peer."""
-        if not header:
-            raise MultiplexerTransportClose
+        header = await self._reader.readexactly(32)
 
         try:
             channel_id, flow_type, data_size, extra = HEADER_STRUCT.unpack(
@@ -303,7 +328,7 @@ class Multiplexer:
         elif message.flow_type == CHANNEL_FLOW_CLOSE:
             # check if message exists
             if message.id not in self._channels:
-                _LOGGER.debug("Receive close from unknown channel")
+                _LOGGER.debug("Receive close from unknown channel: %s", message.id)
                 return
             channel = self._channels.pop(message.id)
             channel.close()
