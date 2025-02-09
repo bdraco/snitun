@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from functools import partial
 import ipaddress
 import logging
 import os
@@ -44,6 +45,10 @@ PEER_TCP_TIMEOUT = 90
 # 11s: 11 bytes: Extra      - data + random padding
 HEADER_STRUCT = struct.Struct(">16sBI11s")
 
+HIGH_WATER_MARK = 10000
+LOW_WATER_MARK = 2000
+QUEUE_MAX = 12000
+
 
 class Multiplexer:
     """Multiplexer Socket wrapper."""
@@ -56,7 +61,9 @@ class Multiplexer:
         "_new_connections",
         "_processing_task",
         "_queue",
+        "_queue_max",
         "_reader",
+        "_resume_writing_callbacks",
         "_throttling",
         "_writer",
     ]
@@ -74,17 +81,33 @@ class Multiplexer:
         self._reader = reader
         self._writer = writer
         self._loop = asyncio.get_event_loop()
-        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(12000)
+        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(QUEUE_MAX)
         self._healthy = asyncio.Event()
         self._processing_task = self._loop.create_task(self._runner())
         self._channels: dict[MultiplexerChannelId, MultiplexerChannel] = {}
         self._new_connections = new_connections
         self._throttling = 1 / throttling if throttling else None
+        self._resume_writing_callbacks: set[Callable[[], None]] = set()
 
     @property
     def is_connected(self) -> bool:
         """Return True is they is connected."""
         return not self._processing_task.done()
+
+    @property
+    def should_pause(self) -> bool:
+        """Return True if the write transport should pause."""
+        return self._queue.qsize() > HIGH_WATER_MARK
+
+    @property
+    def should_resume(self) -> bool:
+        """Return True if the write transport should resume."""
+        return self._queue.qsize() < LOW_WATER_MARK
+
+    def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to resume the protocol."""
+        self._resume_writing_callbacks.add(callback)
+        return partial(self._resume_writing_callbacks.discard, callback)
 
     def wait(self) -> asyncio.Task:
         """Block until the connection is closed.
@@ -174,6 +197,12 @@ class Multiplexer:
 
                     # Flush buffer
                     await self._writer.drain()
+                    # If writers are paused and we have space in the queue
+                    # callback the writers to resume writing
+                    if self._resume_writing_callbacks and self.should_resume:
+                        for callback_ in self._resume_writing_callbacks:
+                            callback_()
+                        self._resume_writing_callbacks.clear()
 
                 # throttling
                 if not self._throttling:
@@ -301,7 +330,7 @@ class Multiplexer:
         elif message.flow_type == CHANNEL_FLOW_CLOSE:
             # check if message exists
             if message.id not in self._channels:
-                _LOGGER.debug("Receive close from unknown channel")
+                _LOGGER.debug("Receive close from unknown channel: %s", message.id)
                 return
             channel = self._channels.pop(message.id)
             channel.close()

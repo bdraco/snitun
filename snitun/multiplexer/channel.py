@@ -25,15 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 class MultiplexerChannel:
     """Represent a multiplexer channel."""
 
-    __slots__ = [
-        "_closing",
-        "_id",
-        "_input",
-        "_ip_address",
-        "_output",
-        "_output_max",
-        "_throttling",
-    ]
+    __slots__ = ["_closing", "_id", "_input", "_ip_address", "_output", "_throttling"]
 
     def __init__(
         self,
@@ -45,7 +37,6 @@ class MultiplexerChannel:
         """Initialize Multiplexer Channel."""
         self._input: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(8000)
         self._output = output
-        self._output_max = output.maxsize
         self._id = channel_id or MultiplexerChannelId(os.urandom(16))
         self._ip_address = ip_address
         self._throttling = throttling
@@ -73,6 +64,7 @@ class MultiplexerChannel:
 
     def close(self) -> None:
         """Close channel on next run."""
+        _LOGGER.debug("Close channel %s", self._id)
         self._closing = True
         with suppress(asyncio.QueueFull):
             self._input.put_nowait(None)
@@ -87,10 +79,6 @@ class MultiplexerChannel:
             MultiplexerMessage,
             (self._id, CHANNEL_FLOW_DATA, data, b""),
         )
-
-    def should_pause(self) -> bool:
-        """Return True if we should pause."""
-        return self._output.qsize() > self._output_max / 2
 
     def write_no_wait(self, data: bytes) -> None:
         """Send data to peer."""
