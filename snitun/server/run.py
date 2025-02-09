@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Iterable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import cycle
 import logging
 from multiprocessing import cpu_count
@@ -159,9 +159,9 @@ class Connection:
 
     sock: socket.socket
     epoll: select.epoll
-    buffer: bytes = field(default=b"")
-    stale: int = field(default=0)
-    close: bool = field(default=False)
+    buffer: bytes = b""
+    stale: int = 0
+    close: bool = False
 
     @property
     def fileno(self) -> int:
