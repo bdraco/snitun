@@ -95,7 +95,7 @@ class MultiplexerChannel:
         try:
             async with asyncio_timeout.timeout(5):
                 await self._output.put(message)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _LOGGER.debug("Can't write to peer transport")
             raise MultiplexerTransportError from None
 
@@ -129,7 +129,7 @@ class MultiplexerChannel:
         return MultiplexerMessage(self._id, CHANNEL_FLOW_NEW, b"", extra)
 
     def message_transport(self, message: MultiplexerMessage) -> None:
-        """Only for internal ussage of core transport."""
+        """Only for internal usage of core transport."""
         if self._closing:
             return
 
