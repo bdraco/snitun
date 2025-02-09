@@ -207,6 +207,7 @@ class Multiplexer:
                 # If writers are paused and we have space in the queue
                 # callback the writers to resume writing
                 if self._resume_writing_callbacks and not self.should_pause:
+                    _LOGGER.debug("Calling callbacks to resume writing")
                     for callback_ in self._resume_writing_callbacks:
                         callback_()
                     self._resume_writing_callbacks.clear()

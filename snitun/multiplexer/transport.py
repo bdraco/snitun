@@ -99,6 +99,11 @@ class ChannelTransport(Transport):
         if not self._channel.closing:
             self._channel.write_no_wait(data)
         if not self._protocol_paused and self._multiplexer.should_pause:
+            _LOGGER.debug(
+                "Pausing writing for %s (%s)",
+                self._channel.ip_address,
+                self._channel.id,
+            )
             self._call_protocol_method("pause_writing")
             self._protocol_paused = True
             self._cancel_resume_writing = (
