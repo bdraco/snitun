@@ -49,9 +49,8 @@ PEER_TCP_MAX_TIMEOUT = 120
 # 11s: 11 bytes: Extra      - data + random padding
 HEADER_STRUCT = struct.Struct(">16sBI11s")
 
-HIGH_WATER_MARK = 10000
-LOW_WATER_MARK = 2000
-QUEUE_MAX = 12000
+HIGH_WATER_MARK = 1024 * 1024 * 6
+LOW_WATER_MARK = 1024 * 1024 * 2
 
 
 class Multiplexer:
@@ -64,7 +63,6 @@ class Multiplexer:
         "_loop",
         "_new_connections",
         "_queue",
-        "_queue_max",
         "_ranged_timeout",
         "_read_task",
         "_reader",
@@ -121,15 +119,13 @@ class Multiplexer:
         _LOGGER.error("Timed out reading and writing to peer")
         self._write_task.cancel()
 
-    @property
-    def should_pause(self) -> bool:
+    def should_pause(self, channel_id: MultiplexerChannelId) -> bool:
         """Return True if the write transport should pause."""
-        return self._queue.qsize() > HIGH_WATER_MARK
+        return self._queue.size(channel_id) > HIGH_WATER_MARK
 
-    @property
-    def should_resume(self) -> bool:
+    def should_resume(self, channel_id: MultiplexerChannelId) -> bool:
         """Return True if the write transport should resume."""
-        return self._queue.qsize() < LOW_WATER_MARK
+        return self._queue.size(channel_id) < LOW_WATER_MARK
 
     def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback to resume the protocol."""
@@ -216,7 +212,11 @@ class Multiplexer:
                 self._ranged_timeout.reschedule()
                 # If writers are paused and we have space in the queue
                 # callback the writers to resume writing
-                if self._resume_writing_callbacks and self.should_resume:
+                if (
+                    to_peer
+                    and self._resume_writing_callbacks
+                    and self.should_resume(to_peer.id)
+                ):
                     _LOGGER.debug("Calling callbacks to resume writing")
                     for callback_ in self._resume_writing_callbacks:
                         callback_()
