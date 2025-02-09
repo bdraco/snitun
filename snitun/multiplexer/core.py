@@ -47,6 +47,10 @@ PEER_TCP_MAX_TIMEOUT = 120
 # 11s: 11 bytes: Extra      - data + random padding
 HEADER_STRUCT = struct.Struct(">16sBI11s")
 
+HIGH_WATER_MARK = 10000
+LOW_WATER_MARK = 2000
+QUEUE_MAX = 12000
+
 
 class Multiplexer:
     """Multiplexer Socket wrapper."""
@@ -82,8 +86,7 @@ class Multiplexer:
         self._reader = reader
         self._writer = writer
         self._loop = asyncio.get_event_loop()
-        self._queue_max = 12000
-        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(self._queue_max)
+        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(QUEUE_MAX)
         self._healthy = asyncio.Event()
         self._healthy.set()
         self._read_task = self._loop.create_task(self._read_from_peer_loop())
@@ -119,7 +122,12 @@ class Multiplexer:
     @property
     def should_pause(self) -> bool:
         """Return True if the write transport should pause."""
-        return self._queue.qsize() > self._queue_max / 2
+        return self._queue.qsize() > HIGH_WATER_MARK
+
+    @property
+    def should_resume(self) -> bool:
+        """Return True if the write transport should resume."""
+        return self._queue.qsize() < LOW_WATER_MARK
 
     def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback to resume the protocol."""
@@ -206,7 +214,7 @@ class Multiplexer:
                 self._ranged_timeout.reschedule()
                 # If writers are paused and we have space in the queue
                 # callback the writers to resume writing
-                if self._resume_writing_callbacks and not self.should_pause:
+                if self._resume_writing_callbacks and self.should_resume:
                     _LOGGER.debug("Calling callbacks to resume writing")
                     for callback_ in self._resume_writing_callbacks:
                         callback_()
