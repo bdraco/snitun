@@ -87,7 +87,7 @@ class MultiplexerChannel:
         # Create message
         message = self._make_message_or_raise(data)
         try:
-            self._output.put_nowait(message)
+            self._output.put_nowait(self.id, message)
         except asyncio.QueueFull:
             _LOGGER.debug("Can't write to peer transport")
             raise MultiplexerTransportError from None
