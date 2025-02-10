@@ -24,7 +24,33 @@ class _ChannelQueue:
         return deque()
 
 
-class MultiplexerQueue:
+class MultiplexerSingleChannelQueue(asyncio.Queue[MultiplexerMessage | None]):
+    """Multiplexer single channel queue.
+
+    qsize is the size of the queue in bytes instead of the number of items.
+    """
+
+    _total_bytes: int = 0
+
+    def _put(self, message: MultiplexerMessage | None) -> None:
+        """Put a message in the queue."""
+        size = 0 if message is None else len(message.data)
+        self._total_bytes += size
+        super()._put(message)
+
+    def _get(self) -> MultiplexerMessage | None:
+        """Get a message from the queue."""
+        message = super()._get()
+        size = 0 if message is None else len(message.data)
+        self._total_bytes -= size
+        return message
+
+    def qsize(self) -> int:
+        """Size of the queue in bytes."""
+        return self._total_bytes
+
+
+class MultiplexerMultiChannelQueue:
     """Multiplexer queue."""
 
     def __init__(self, channel_size_limit: int) -> None:
@@ -60,8 +86,7 @@ class MultiplexerQueue:
         """Put a message in the queue."""
         # Based on asyncio.Queue.put()
         channel = self._channels[channel_id]
-
-        while self.full(channel_id):
+        while channel.total_bytes >= self._channel_size_limit:  # full
             putter = self._loop.create_future()
             channel.putters.append(putter)
             try:
@@ -76,7 +101,7 @@ class MultiplexerQueue:
                     # the call.  Wake up the next in line.
                     self._wakeup_next(channel.putters)
                 raise
-        self.put_nowait(channel_id, message)
+        self._put(channel_id, channel, message)
 
     def put_nowait(
         self,
@@ -84,8 +109,16 @@ class MultiplexerQueue:
         message: MultiplexerMessage | None,
     ) -> None:
         """Put a message in the queue."""
+        self._put(channel_id, self._channels[channel_id], message)
+
+    def _put(
+        self,
+        channel_id: MultiplexerChannelId,
+        channel: _ChannelQueue,
+        message: MultiplexerMessage | None,
+    ) -> None:
+        """Put a message in the queue."""
         size = 0 if message is None else len(message.data)
-        channel = self._channels[channel_id]
         if channel.total_bytes >= self._channel_size_limit:
             raise asyncio.QueueFull
         channel.queue.append(message)
@@ -139,11 +172,6 @@ class MultiplexerQueue:
         if putters := channel.putters:
             self._wakeup_next(putters)
         return message
-
-    def delete(self, channel_id: MultiplexerChannelId) -> None:
-        """Delete a channel queue."""
-        self._channels.pop(channel_id, None)
-        self._order.pop(channel_id, None)
 
     def empty(self, channel_id: MultiplexerChannelId) -> bool:
         """Empty the queue."""
