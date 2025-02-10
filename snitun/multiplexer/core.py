@@ -49,7 +49,7 @@ PEER_TCP_MAX_TIMEOUT = 120
 # 11s: 11 bytes: Extra      - data + random padding
 HEADER_STRUCT = struct.Struct(">16sBI11s")
 
-HIGH_WATER_MARK = 64 * 1024
+HIGH_WATER_MARK = 4 * 64 * 1024
 LOW_WATER_MARK = HIGH_WATER_MARK // 4
 
 
