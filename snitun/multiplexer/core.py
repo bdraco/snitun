@@ -21,6 +21,7 @@ from ..exceptions import (
 from ..utils.asyncio import RangedTimeout, asyncio_timeout, make_task_waiter_future
 from ..utils.ipaddress import bytes_to_ip_address
 from .channel import MultiplexerChannel
+from .const import OUTGOING_QUEUE_MAX_BYTES_CHANNEL
 from .crypto import CryptoTransport
 from .message import (
     CHANNEL_FLOW_CLOSE,
@@ -30,6 +31,7 @@ from .message import (
     MultiplexerChannelId,
     MultiplexerMessage,
 )
+from .queue import MultiplexerMultiChannelQueue
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class Multiplexer:
         self._reader = reader
         self._writer = writer
         self._loop = asyncio.get_event_loop()
-        self._queue: asyncio.Queue[MultiplexerMessage] = asyncio.Queue(QUEUE_MAX)
+        self._queue = MultiplexerMultiChannelQueue(OUTGOING_QUEUE_MAX_BYTES_CHANNEL)
         self._healthy = asyncio.Event()
         self._healthy.set()
         self._read_task = self._loop.create_task(self._read_from_peer_loop())
@@ -122,12 +124,12 @@ class Multiplexer:
     @property
     def should_pause(self) -> bool:
         """Return True if the write transport should pause."""
-        return self._queue.qsize() > HIGH_WATER_MARK
+        return self._queue.size() > HIGH_WATER_MARK
 
     @property
     def should_resume(self) -> bool:
         """Return True if the write transport should resume."""
-        return self._queue.qsize() < LOW_WATER_MARK
+        return self._queue.size() < LOW_WATER_MARK
 
     def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback to resume the protocol."""
@@ -359,7 +361,7 @@ class Multiplexer:
 
         try:
             async with asyncio_timeout.timeout(5):
-                await self._queue.put(message)
+                await self._queue.put(channel.id, message)
         except TimeoutError:
             raise MultiplexerTransportError from None
 
@@ -373,7 +375,7 @@ class Multiplexer:
 
         try:
             async with asyncio_timeout.timeout(5):
-                await self._queue.put(message)
+                await self._queue.put(channel.id, message)
         except TimeoutError:
             raise MultiplexerTransportError from None
         finally:
