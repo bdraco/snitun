@@ -28,6 +28,7 @@ from .message import (
     CHANNEL_FLOW_DATA,
     CHANNEL_FLOW_NEW,
     CHANNEL_FLOW_PING,
+    HEADER_STRUCT,
     MultiplexerChannelId,
     MultiplexerMessage,
 )
@@ -37,18 +38,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PEER_TCP_MIN_TIMEOUT = 90
 PEER_TCP_MAX_TIMEOUT = 120
-
-# |-----------------HEADER---------------------------------|
-# |------ID-----|--FLAG--|--SIZE--|---------EXTRA ---------|
-# |   16 bytes  | 1 byte | 4 bytes|       11 bytes         |
-# |--------------------------------------------------------|
-# >:   All bytes are big-endian and unsigned
-# 16s: 16 bytes: Channel ID - random
-# B:   1 byte:   Flow type  - 1: NEW, 2: DATA, 4: CLOSE, 8: PING
-# I:   4 bytes:  Data size  - 0-4294967295
-# 11s: 11 bytes: Extra      - data + random padding
-HEADER_STRUCT = struct.Struct(">16sBI11s")
-
 HIGH_WATER_MARK = 4 * 64 * 1024
 LOW_WATER_MARK = HIGH_WATER_MARK // 4
 
@@ -300,7 +289,7 @@ class Multiplexer:
             channel = self._channels[message.id]
             if channel.closing:
                 pass
-            elif channel.healthy:
+            elif channel.unhealthy:
                 _LOGGER.warning("Abort connection, channel is not healthy")
                 channel.close()
                 self._loop.create_task(self.delete_channel(channel))

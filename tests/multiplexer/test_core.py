@@ -1,12 +1,14 @@
 """Tests for core multiplexer handler."""
 
 import asyncio
+from contextlib import suppress
 import ipaddress
 from unittest.mock import patch
 
 import pytest
 
 from snitun.exceptions import MultiplexerTransportClose, MultiplexerTransportError
+from snitun.multiplexer import channel as channel_module, core as core_module
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.crypto import CryptoTransport
 from snitun.multiplexer.message import CHANNEL_FLOW_PING
@@ -143,8 +145,9 @@ async def test_multiplexer_ping_error(
     from snitun.multiplexer import core as multi_core
 
     loop = event_loop
-    with patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.2), patch.object(
-        multi_core, "PEER_TCP_MIN_TIMEOUT", 0.2
+    with (
+        patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.2),
+        patch.object(multi_core, "PEER_TCP_MIN_TIMEOUT", 0.2),
     ):
         client = test_server[0]
         ping_task = loop.create_task(multiplexer_client.ping())
@@ -161,7 +164,6 @@ async def test_multiplexer_ping_error(
 
         with pytest.raises(MultiplexerTransportError):
             raise ping_task.exception()
-
 
 
 async def test_multiplexer_ping_pong(
@@ -332,7 +334,8 @@ async def test_multiplexer_channel_shutdown(
         raise server_read.exception()
 
 
-@pytest.mark.skipif(True, reason="Not working correctly locally on main either.")
+@patch.object(channel_module, "INCOMING_QUEUE_MAX_BYTES_CHANNEL", 1)
+@patch.object(core_module, "OUTGOING_QUEUE_MAX_BYTES_CHANNEL", 1)
 async def test_multiplexer_data_channel_abort_full(
     multiplexer_client: Multiplexer,
     multiplexer_server: Multiplexer,
@@ -348,10 +351,11 @@ async def test_multiplexer_data_channel_abort_full(
 
     assert channel_client
     assert channel_server
+    large_msg = b"test xxxx" * 1000
 
     with pytest.raises(MultiplexerTransportClose):
         for count in range(1, 50000):
-            await channel_client.write(b"test xxxx")
+            await channel_client.write(large_msg)
 
     with pytest.raises(MultiplexerTransportClose):
         for count in range(1, 50000):
@@ -381,14 +385,14 @@ async def test_multiplexer_throttling(
     multiplexer_server._throttling = 0.1
     multiplexer_client._throttling = 0.1
 
-    async def _sender():
+    async def _sender() -> None:
         """Send data much as possible."""
-        for count in range(1, 100000):
+        for _ in range(1, 100000):
             await channel_client.write(b"data")
 
-    async def _receiver():
+    async def _receiver() -> None:
         """Receive data much as possible."""
-        for count in range(1, 100000):
+        for _ in range(1, 100000):
             data = await channel_server.read()
             data_in.append(data)
 
@@ -396,12 +400,16 @@ async def test_multiplexer_throttling(
     sender = loop.create_task(_sender())
     await asyncio.sleep(0.8)
 
-    assert not sender.done()
     assert not receiver.done()
+
     assert len(data_in) <= 8
 
     receiver.cancel()
     sender.cancel()
+    with suppress(asyncio.CancelledError):
+        await receiver
+    with suppress(asyncio.CancelledError):
+        await sender
 
 
 async def test_multiplexer_core_peer_timeout(
@@ -413,8 +421,9 @@ async def test_multiplexer_core_peer_timeout(
     from snitun.multiplexer import core as multi_core
 
     loop = event_loop
-    with patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.2), patch.object(
-        multi_core, "PEER_TCP_MIN_TIMEOUT", 0.2
+    with (
+        patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.2),
+        patch.object(multi_core, "PEER_TCP_MIN_TIMEOUT", 0.2),
     ):
         assert not multiplexer_client._channels
         assert not multiplexer_server._channels

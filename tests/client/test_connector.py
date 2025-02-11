@@ -146,7 +146,10 @@ async def test_connector_keep_alive_works(
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -182,7 +185,10 @@ async def test_connector_multiple_connection(
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -220,7 +226,10 @@ async def test_connector_valid_url_empty_buffer_client_side(
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -269,7 +278,10 @@ async def test_connector_valid_url_buffer_too_small_client_side(
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -321,7 +333,10 @@ async def test_connector_valid_url_failed_to_get_buffer_unexpected_exception_cli
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -371,7 +386,10 @@ async def test_connector_valid_url_buffer_updated_raises_client_side(
     client_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal client_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         client_channel_transport = ChannelTransport(channel, multiplexer)
@@ -420,7 +438,10 @@ async def test_connector_valid_url_empty_buffer_server_side(
     server_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal server_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         server_channel_transport = ChannelTransport(channel, multiplexer)
@@ -451,7 +472,7 @@ async def test_connector_valid_url_empty_buffer_server_side(
 
     await session.close()
     assert transport_creation_calls == 1
-    assert"returned an empty buffer" in caplog.text
+    assert "returned an empty buffer" in caplog.text
 
 
 @pytest.mark.skipif(
@@ -475,7 +496,10 @@ async def test_connector_valid_url_failed_to_get_buffer_unexpected_exception_ser
     server_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal server_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         server_channel_transport = ChannelTransport(channel, multiplexer)
@@ -531,7 +555,10 @@ async def test_connector_valid_url_buffer_updated_raises_server_side(
     server_channel_transport: ChannelTransport | None = None
     transport_creation_calls = 0
 
-    def _save_transport(channel: MultiplexerChannel, multiplexer: Multiplexer) -> ChannelTransport:
+    def _save_transport(
+        channel: MultiplexerChannel,
+        multiplexer: Multiplexer,
+    ) -> ChannelTransport:
         nonlocal server_channel_transport, transport_creation_calls
         transport_creation_calls += 1
         server_channel_transport = ChannelTransport(channel, multiplexer)
