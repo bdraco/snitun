@@ -66,7 +66,11 @@ class Multiplexer:
         crypto: CryptoTransport,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
-        new_connections: Coroutine[Any, Any, None] | None = None,
+        new_connections: Callable[
+            [Multiplexer, MultiplexerChannel],
+            Coroutine[Any, Any, None],
+        ]
+        | None = None,
         throttling: int | None = None,
     ) -> None:
         """Initialize Multiplexer."""
@@ -115,7 +119,10 @@ class Multiplexer:
         """Return True if the write transport should resume."""
         return self._queue.size(channel_id) < LOW_WATER_MARK
 
-    def register_resume_writing_callback(self, callback: Callable[[], None]) -> None:
+    def register_resume_writing_callback(
+        self,
+        callback: Callable[[], None],
+    ) -> Callable[[], None]:
         """Register a callback to resume the protocol."""
         self._resume_writing_callbacks.add(callback)
         return partial(self._resume_writing_callbacks.discard, callback)
@@ -194,8 +201,8 @@ class Multiplexer:
         transport = self._writer.transport
         try:
             while not transport.is_closing():
-                to_peer = await self._queue.get()
-                self._write_message(to_peer)
+                if to_peer := await self._queue.get():
+                    self._write_message(to_peer)
                 await self._writer.drain()
                 self._ranged_timeout.reschedule()
                 # If writers are paused and we have space in the queue

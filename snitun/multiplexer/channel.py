@@ -105,7 +105,7 @@ class MultiplexerChannel:
         if self._throttling is not None:
             await asyncio.sleep(self._throttling)
 
-    async def read(self) -> MultiplexerMessage:
+    async def read(self) -> bytes:
         """Read data from peer."""
         if self._closing and self._input.empty():
             message = None
