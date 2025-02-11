@@ -8,7 +8,11 @@ from unittest.mock import patch
 import pytest
 
 from snitun.exceptions import MultiplexerTransportClose, MultiplexerTransportError
-from snitun.multiplexer import channel as channel_module, core as core_module
+from snitun.multiplexer import (
+    channel as channel_module,
+    core as core_module,
+    core as multi_core,
+)
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.crypto import CryptoTransport
 from snitun.multiplexer.message import CHANNEL_FLOW_PING
@@ -418,12 +422,14 @@ async def test_multiplexer_core_peer_timeout(
     multiplexer_server: Multiplexer,
 ) -> None:
     """Test that new channels are created and graceful shutdown."""
-    from snitun.multiplexer import core as multi_core
-
     loop = event_loop
     with (
-        patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.2),
-        patch.object(multi_core, "PEER_TCP_MIN_TIMEOUT", 0.2),
+        patch.object(multi_core, "PEER_TCP_MAX_TIMEOUT", 0.1),
+        patch.object(
+            multi_core,
+            "PEER_TCP_MIN_TIMEOUT",
+            0.1,
+        ),
     ):
         assert not multiplexer_client._channels
         assert not multiplexer_server._channels
@@ -439,9 +445,17 @@ async def test_multiplexer_core_peer_timeout(
         assert not client_read.done()
         assert not server_read.done()
 
-        await multiplexer_client.ping()
-        await asyncio.sleep(0.3)
+        # Patch the reader so it blocks forever
+        # and cannot read the pong response
+        with patch.object(
+            multiplexer_client._reader,
+            "readexactly",
+            loop.create_future(),
+        ):
+            await multiplexer_client.ping()
+            await asyncio.sleep(0.3)
 
+        # make sure everything tears down ok
         assert not multiplexer_client._channels
         assert not multiplexer_server._channels
         assert server_read.done()
