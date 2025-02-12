@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Coroutine
 from contextlib import suppress
-from functools import partial
 import ipaddress
 import logging
 import os
@@ -46,6 +45,9 @@ PEER_TCP_MAX_TIMEOUT = 120
 HIGH_WATER_MARK = 4 * 64 * 1024
 LOW_WATER_MARK = HIGH_WATER_MARK // 4
 
+HIGH_WATER_MARK = 10000
+LOW_WATER_MARK = 2000
+
 
 class Multiplexer:
     """Multiplexer Socket wrapper."""
@@ -61,7 +63,6 @@ class Multiplexer:
         "_ranged_timeout",
         "_read_task",
         "_reader",
-        "_resume_writing_callbacks",
         "_throttling",
         "_timed_out",
         "_write_task",
@@ -85,6 +86,11 @@ class Multiplexer:
         self._reader = reader
         self._writer = writer
         self._loop = asyncio.get_event_loop()
+        self._queue = MultiplexerMultiChannelQueue(
+            OUTGOING_QUEUE_MAX_BYTES_CHANNEL,
+            OUTGOING_QUEUE_LOW_WATERMARK,
+            OUTGOING_QUEUE_HIGH_WATERMARK,
+        )
         self._healthy = asyncio.Event()
         self._healthy.set()
         self._read_task = self._loop.create_task(self._read_from_peer_loop())
@@ -95,12 +101,6 @@ class Multiplexer:
             self._on_timeout,
         )
         self._timed_out: bool = False
-        self._queue = MultiplexerMultiChannelQueue(
-            OUTGOING_QUEUE_MAX_BYTES_CHANNEL,
-            OUTGOING_QUEUE_LOW_WATERMARK,
-            OUTGOING_QUEUE_HIGH_WATERMARK,
-        )
-        self._healthy = asyncio.Event()
         self._channel_tasks: set[asyncio.Task[None]] = set()
         self._channels: dict[MultiplexerChannelId, MultiplexerChannel] = {}
         self._new_connections = new_connections
@@ -111,7 +111,6 @@ class Multiplexer:
             # an will yield for one iteration of the event loop
             # and we do not have that level of precision anyways
             self._throttling = 0.0 if throttling < 500 else 1 / throttling
-        self._resume_writing_callbacks: set[Callable[[], None]] = set()
 
     @property
     def is_connected(self) -> bool:
@@ -123,22 +122,6 @@ class Multiplexer:
         self._timed_out = True
         _LOGGER.error("Timed out reading and writing to peer")
         self._write_task.cancel()
-
-    def should_pause(self, channel_id: MultiplexerChannelId) -> bool:
-        """Return True if the write transport should pause."""
-        return self._queue.size(channel_id) > HIGH_WATER_MARK
-
-    def should_resume(self, channel_id: MultiplexerChannelId) -> bool:
-        """Return True if the write transport should resume."""
-        return self._queue.size(channel_id) < LOW_WATER_MARK
-
-    def register_resume_writing_callback(
-        self,
-        callback: Callable[[], None],
-    ) -> Callable[[], None]:
-        """Register a callback to resume the protocol."""
-        self._resume_writing_callbacks.add(callback)
-        return partial(self._resume_writing_callbacks.discard, callback)
 
     def wait(self) -> asyncio.Future[None]:
         """Block until the connection is closed.
@@ -215,17 +198,6 @@ class Multiplexer:
                     self._write_message(to_peer)
                 await self._writer.drain()
                 self._ranged_timeout.reschedule()
-                # If writers are paused and we have space in the queue
-                # callback the writers to resume writing
-                if (
-                    to_peer
-                    and self._resume_writing_callbacks
-                    and self.should_resume(to_peer.id)
-                ):
-                    _LOGGER.debug("Calling callbacks to resume writing")
-                    for callback_ in self._resume_writing_callbacks:
-                        callback_()
-                    self._resume_writing_callbacks.clear()
         except asyncio.CancelledError:
             _LOGGER.debug("Write canceling")
             with suppress(OSError):
