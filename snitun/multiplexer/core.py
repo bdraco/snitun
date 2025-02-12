@@ -42,8 +42,6 @@ _LOGGER = logging.getLogger(__name__)
 
 PEER_TCP_MIN_TIMEOUT = 90
 PEER_TCP_MAX_TIMEOUT = 120
-HIGH_WATER_MARK = 4 * 64 * 1024
-LOW_WATER_MARK = HIGH_WATER_MARK // 4
 
 
 class Multiplexer:
