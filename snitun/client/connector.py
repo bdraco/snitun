@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import asyncio.sslproto
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from contextlib import suppress
 import ipaddress
 import logging
 from ssl import SSLContext, SSLError
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from aiohttp.web import RequestHandler
 
 from ..exceptions import MultiplexerTransportError
 from ..multiplexer.channel import MultiplexerChannel
@@ -27,17 +23,14 @@ class Connector:
 
     def __init__(
         self,
-        protocol_factory: Callable[[], RequestHandler],
+        protocol_factory: Callable[[], asyncio.Protocol],
         ssl_context: SSLContext,
         whitelist: bool = False,
-        endpoint_connection_error_callback: Callable[[], Coroutine[Any, Any, None]]
-        | None = None,
     ) -> None:
         """Initialize Connector."""
         self._loop = asyncio.get_running_loop()
         self._whitelist: set[ipaddress.IPv4Address] = set()
         self._whitelist_enabled = whitelist
-        self._endpoint_connection_error_callback = endpoint_connection_error_callback
         self._protocol_factory = protocol_factory
         self._ssl_context = ssl_context
 
@@ -84,26 +77,21 @@ class ConnectorHandler:
     ) -> None:
         """Initialize ConnectorHandler."""
         self._loop = loop
-        self._pause_future: asyncio.Future[None] | None = None
         self._multiplexer = multiplexer
         self._channel = channel
         self._transport = transport
 
     def _pause_resume_reader_callback(self, pause: bool) -> None:
         """Pause and resume reader."""
+        _LOGGER.debug(
+            "%s reader for %s (%s)",
+            "Pause" if pause else "Resume",
+            self._channel.ip_address,
+            self._channel.id,
+        )
         if pause:
-            _LOGGER.debug(
-                "Pause reader for %s (%s)",
-                self._channel.ip_address,
-                self._channel.id,
-            )
             self._transport.pause_protocol()
         else:
-            _LOGGER.debug(
-                "Resuming reader for %s (%s)",
-                self._channel.ip_address,
-                self._channel.id,
-            )
             self._transport.resume_protocol()
 
     async def _fail_to_start_tls(self, ex: Exception | None) -> None:
@@ -121,23 +109,23 @@ class ConnectorHandler:
 
     async def start(
         self,
-        protocol_factory: Callable[[], RequestHandler],
+        protocol_factory: Callable[[], asyncio.Protocol],
         ssl_context: SSLContext,
     ) -> None:
         """Start handler."""
         channel = self._channel
         channel.set_pause_resume_reader_callback(self._pause_resume_reader_callback)
         self._transport.start_reader()
-        # The request_handler is the aiohttp RequestHandler
+        # The request_handler is the aiohttp RequestHandler (or any other protocol)
         # that is generated from the protocol_factory that
         # was passed in the constructor.
-        request_handler_protocol = protocol_factory()
+        protocol = protocol_factory()
 
         # Upgrade the transport to TLS
         try:
             new_transport = await self._loop.start_tls(
                 self._transport,
-                request_handler_protocol,
+                protocol,
                 ssl_context,
                 server_side=True,
             )
@@ -155,7 +143,7 @@ class ConnectorHandler:
         # start the request handler and serve the connection.
         _LOGGER.info("Connected peer: %s (%s)", channel.ip_address, channel.id)
         try:
-            request_handler_protocol.connection_made(new_transport)
+            protocol.connection_made(new_transport)
             await self._transport.wait_for_close()
         except Exception as ex:  # noqa: BLE001
             # Make sure we catch any exception that might be raised
@@ -168,13 +156,13 @@ class ConnectorHandler:
             )
             with suppress(MultiplexerTransportError):
                 await self._multiplexer.delete_channel(channel)
-            request_handler_protocol.connection_lost(ex)
+            protocol.connection_lost(ex)
         else:
             _LOGGER.debug(
                 "Peer close connection for %s (%s)",
                 channel.ip_address,
                 channel.id,
             )
-            request_handler_protocol.connection_lost(None)
+            protocol.connection_lost(None)
         finally:
             new_transport.close()

@@ -3,6 +3,7 @@
 import asyncio
 import asyncio.sslproto
 import ipaddress
+import logging
 import ssl
 from typing import TYPE_CHECKING
 
@@ -11,15 +12,17 @@ from aiohttp.client_proto import ResponseHandler
 from aiohttp.connector import BaseConnector
 
 from snitun.exceptions import MultiplexerTransportClose
-
-if TYPE_CHECKING:
-    from aiohttp.tracing import Trace
-
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.transport import ChannelTransport
 from snitun.utils.asyncio import create_eager_task
 
 from ..conftest import IP_ADDR
+
+if TYPE_CHECKING:
+    from aiohttp.tracing import Trace
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ResponseHandlerWithTransportReader(ResponseHandler):

@@ -16,7 +16,7 @@ from snitun.multiplexer.channel import MultiplexerChannel
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.transport import ChannelTransport
 
-from ..conftest import BAD_ADDR
+from ..conftest import BAD_ADDR, IP_ADDR, SNITunLoopback, make_snitun_connector
 from . import helpers
 
 
@@ -534,3 +534,77 @@ async def test_connector_valid_url_buffer_updated_raises_server_side(
     await session.close()
     assert transport_creation_calls == 1
     assert "consuming buffer or protocol.buffer_updated() call failed" in caplog.text
+
+
+async def test_init_connector_whitelist_bad(
+    multiplexer_client: Multiplexer,
+    multiplexer_server: Multiplexer,
+    client_ssl_context: ssl.SSLContext,
+    server_ssl_context: ssl.SSLContext,
+) -> None:
+    """Test and init a connector with whitelist bad requests."""
+    connector_with_streams = make_snitun_connector(server_ssl_context, whitelist=True)
+    connector = connector_with_streams.connector
+    multiplexer_client._new_connections = connector.handler
+
+    connector.whitelist.add(IP_ADDR)
+    assert IP_ADDR in connector.whitelist
+    assert BAD_ADDR not in connector.whitelist
+    channel = await multiplexer_server.create_channel(BAD_ADDR, lambda _: None)
+    await asyncio.sleep(0.1)
+
+    assert not connector_with_streams.connections
+
+    with pytest.raises(MultiplexerTransportClose):
+        await channel.read()
+
+
+async def test_connector_handler_can_pause(snitun_loopback: SNITunLoopback) -> None:
+    """Test connector handler can pause."""
+    client_channel = snitun_loopback.client.channel
+    client_protocol = snitun_loopback.client.protocol
+    client_transport = snitun_loopback.client.transport
+    # In this case the server_protocol is the browser
+    # and the client_protocol is the Home Assistant server
+    # since the connection is initiated from the snitun server
+    # back into Home Assistant
+    server_protocol = snitun_loopback.server.protocol
+    server_channel = snitun_loopback.server.channel
+
+    server_protocol.writer.write(b"Hallo")
+    await server_protocol.writer.drain()
+    assert await client_protocol.reader.read(1024) == b"Hallo"
+
+    client_protocol.writer.write(b"Hiro")
+    await client_protocol.writer.drain()
+    assert await server_protocol.reader.read(1024) == b"Hiro"
+
+    assert client_transport.protocol_paused is False
+    # Simulate that the remote input goes under water
+    client_channel.on_remote_input_under_water(True)
+    assert client_transport.protocol_paused is True
+
+    client_protocol.writer.write(b"ByeBye")
+    await client_protocol.writer.drain()
+
+    read_task = asyncio.create_task(server_protocol.reader.read(1024))
+    await asyncio.sleep(0.1)
+    # Make sure reader is actually paused
+    assert not read_task.done()
+
+    # Now simulate that the remote input is no longer under water
+    client_channel.on_remote_input_under_water(False)
+    assert client_transport.protocol_paused is False
+    assert await read_task == b"ByeBye"
+
+    client_protocol.writer.close()
+    await asyncio.sleep(0.1)
+
+    with pytest.raises(MultiplexerTransportClose):
+        await server_channel.read()
+
+    # make sure writing to the transport after close swallows data
+    # as its common for SSLProtocol to do this and we do not want
+    # to raise and fill the logs with exceptions
+    assert client_transport.is_closing() is True
+    client_transport.write(b"write_after_close")

@@ -141,7 +141,6 @@ class MultiplexerChannel:
 
     def close(self) -> None:
         """Close channel on next run."""
-        _LOGGER.debug("Close channel %s", self._id)
         self._closing = True
         with suppress(asyncio.QueueFull):
             self._input.put_nowait(None)
@@ -171,11 +170,16 @@ class MultiplexerChannel:
         """Send data to peer."""
         message = self._make_message_or_raise(data)
         try:
-            async with asyncio_timeout.timeout(5):
-                await self._output.put(self.id, message)
-        except TimeoutError:
-            _LOGGER.debug("Can't write to peer transport")
-            raise MultiplexerTransportError from None
+            # Try to avoid the timer handle if we can
+            # add to the queue without waiting
+            self._output.put_nowait(self._id, message)
+        except asyncio.QueueFull:
+            try:
+                async with asyncio_timeout.timeout(5):
+                    await self._output.put(self._id, message)
+            except TimeoutError:
+                _LOGGER.debug("Can't write to peer transport")
+                raise MultiplexerTransportError from None
 
         if self._throttling is not None:
             await asyncio.sleep(self._throttling)

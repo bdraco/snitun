@@ -6,7 +6,6 @@ import asyncio
 from asyncio import Transport
 import asyncio.sslproto
 import logging
-import sys
 from typing import TYPE_CHECKING
 
 from ..exceptions import MultiplexerTransportClose
@@ -15,6 +14,20 @@ from ..utils.asyncio import create_eager_task
 from .core import Multiplexer
 
 _LOGGER = logging.getLogger(__name__)
+
+# When the Cloud servers are able to get the real client IP
+# this should be set to True so that the IP address can be
+# used to block requests and passed to the end resource.
+#
+# This is useful to block requests from specific IP addresses
+# and it means the client side will see the IP of the other
+# end of the multiplexed connection for failed logins and other
+# security features.
+#
+# If the Cloud servers are not able to get the real client IP
+# this should be set to False so that the IP continues to present
+# as 127.0.0.1
+CHANNEL_IP_IS_CLIENT_IP = False
 
 
 def _feed_data_to_buffered_proto(proto: asyncio.BufferedProtocol, data: bytes) -> None:
@@ -56,9 +69,16 @@ class ChannelTransport(Transport):
         self._loop = asyncio.get_running_loop()
         self._protocol: asyncio.BufferedProtocol | None = None
         self._pause_future: asyncio.Future[None] | None = None
+        self._protocol_paused: bool = False
         self._reader_task: asyncio.Task[None] | None = None
         self._multiplexer = multiplexer
-        super().__init__(extra={"peername": (str(channel.ip_address), 0)})
+        peername = str(channel.ip_address) if CHANNEL_IP_IS_CLIENT_IP else "127.0.0.1"
+        super().__init__(extra={"peername": (peername, 0)})
+
+    @property
+    def protocol_paused(self) -> bool:
+        """Return True if the protocol is paused."""
+        return self._protocol_paused
 
     def start_reader(self) -> None:
         """Start the transport."""
@@ -70,7 +90,9 @@ class ChannelTransport(Transport):
 
     def get_protocol(self) -> asyncio.BufferedProtocol:
         """Return the protocol."""
-        assert self._protocol is not None, "Protocol not set"
+        assert self._protocol is not None, (
+            "ChannelTransport.get_protocol(): Protocol not set"
+        )
         return self._protocol
 
     def set_protocol(self, protocol: asyncio.BaseProtocol | None) -> None:
@@ -101,16 +123,17 @@ class ChannelTransport(Transport):
 
     def resume_protocol(self) -> None:
         """Resume the protocol."""
-        self._call_protocol_method("resume_writing")
+        self._pause_or_resume_protocol(False)
 
     def pause_protocol(self) -> None:
         """Pause the protocol."""
-        self._call_protocol_method("pause_writing")
+        self._pause_or_resume_protocol(True)
 
-    def _call_protocol_method(self, method_name: str) -> None:
+    def _pause_or_resume_protocol(self, pause: bool) -> None:
         """Call a method on the protocol."""
-        if self.is_closing():
+        if not self._protocol or self.is_closing():
             return
+        method_name = "pause_writing" if pause else "resume_writing"
         _LOGGER.debug(
             "Calling protocol.%s() for %s (%s)",
             method_name,
@@ -118,7 +141,10 @@ class ChannelTransport(Transport):
             self._channel.id,
         )
         try:
-            getattr(self._protocol, method_name)()
+            if pause:
+                self._protocol.pause_writing()
+            else:
+                self._protocol.resume_writing()
         except (SystemExit, KeyboardInterrupt):
             raise
         except BaseException as exc:  # noqa: BLE001
@@ -130,6 +156,8 @@ class ChannelTransport(Transport):
                     "protocol": self._protocol,
                 },
             )
+        else:
+            self._protocol_paused = pause
 
     async def wait_for_close(self) -> None:
         """Wait for the transport to close."""
@@ -176,11 +204,7 @@ class ChannelTransport(Transport):
             await self._reader_task
         except asyncio.CancelledError:
             # Don't swallow cancellation
-            if (
-                sys.version_info >= (3, 11)
-                and (current_task := asyncio.current_task())
-                and current_task.cancelling()
-            ):
+            if (current_task := asyncio.current_task()) and current_task.cancelling():
                 raise
         except Exception:
             _LOGGER.exception("Error in transport_reader_task")
