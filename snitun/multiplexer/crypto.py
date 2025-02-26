@@ -16,8 +16,10 @@ class CryptoTransport:
 
     __slots__ = [
         "_cipher",
+        "_d_counter",
         "_decrypt_stream",
         "_decryptor",
+        "_e_counter",
         "_encrypt_stream",
         "_encryptor",
     ]
@@ -31,14 +33,22 @@ class CryptoTransport:
         )
         self._encryptor = self._cipher.encryptor()
         self._decryptor = self._cipher.decryptor()
+        self._e_counter = 0
+        self._d_counter = 0
 
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data from transport."""
-        return self._encryptor.update(data)
+        enc = self._encryptor.update(data)
+        self._e_counter += 1
+        _LOGGER.debug("%s: E(%d): %s -> %s", id(self), data, self._e_counter, enc)
+        return enc
 
     def decrypt(self, data: bytes) -> bytes:
         """Decrypt data from transport."""
+        self._d_counter += 1
         try:
-            return self._decryptor.update(data)
+            dec = self._decryptor.update(data)
         except InvalidTag:
             raise MultiplexerTransportDecrypt from None
+        _LOGGER.debug("%s: D(%d): %s -> %s", id(self), data, self._d_counter, dec)
+        return dec
