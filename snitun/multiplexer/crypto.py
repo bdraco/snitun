@@ -1,10 +1,14 @@
 """Encrypt or Decrypt multiplexer transport data."""
 
+import logging
+
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from ..exceptions import MultiplexerTransportDecrypt
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CryptoTransport:
@@ -27,19 +31,14 @@ class CryptoTransport:
         )
         self._encryptor = self._cipher.encryptor()
         self._decryptor = self._cipher.decryptor()
-        self._decrypt_stream = []
-        self._encrypt_stream = []
 
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data from transport."""
-        self._encrypt_stream.append(data)
-        return self._encryptor.update(data)
+        return self._encryptor.update(bytes(data))
 
     def decrypt(self, data: bytes) -> bytes:
         """Decrypt data from transport."""
         try:
-            x = self._decryptor.update(data)
+            return self._decryptor.update(bytes(data))
         except InvalidTag:
             raise MultiplexerTransportDecrypt from None
-        self._decrypt_stream.append(x)
-        return x

@@ -256,7 +256,7 @@ class Multiplexer:
         try:
             decrypted_header = self._crypto.decrypt(header)
             channel_id, flow_type, data_size, extra = HEADER_STRUCT.unpack(
-                decrypted_header
+                decrypted_header,
             )
             _LOGGER.debug(
                 "%s: c=%s: read header (%s): enc=%s une=%s",
@@ -297,11 +297,6 @@ class Multiplexer:
                 _LOGGER.warning(
                     "Abort connection, channel %s is not healthy",
                     channel.id,
-                )
-                _LOGGER.warning(
-                    "Delete channel %s: decrypt stream: %s",
-                    channel_id,
-                    self._crypto._decrypt_stream,
                 )
                 channel.close()
                 self._create_channel_task(self.delete_channel(channel))
