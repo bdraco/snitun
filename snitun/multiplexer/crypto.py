@@ -34,11 +34,11 @@ class CryptoTransport:
 
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data from transport."""
-        return self._encryptor.update(bytes(data))
+        return self._encryptor.update(data)
 
     def decrypt(self, data: bytes) -> bytes:
         """Decrypt data from transport."""
         try:
-            return self._decryptor.update(bytes(data))
+            return self._decryptor.update(data)
         except InvalidTag:
             raise MultiplexerTransportDecrypt from None
