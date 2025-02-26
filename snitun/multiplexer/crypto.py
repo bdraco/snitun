@@ -40,7 +40,7 @@ class CryptoTransport:
         """Encrypt data from transport."""
         enc = self._encryptor.update(data)
         self._e_counter += 1
-        _LOGGER.debug("%s: E(%d): %s -> %s", id(self), data, self._e_counter, enc)
+        _LOGGER.debug("%s: E(%d): %s -> %s", id(self), self._e_counter, data, enc)
         return enc
 
     def decrypt(self, data: bytes) -> bytes:
@@ -50,5 +50,5 @@ class CryptoTransport:
             dec = self._decryptor.update(data)
         except InvalidTag:
             raise MultiplexerTransportDecrypt from None
-        _LOGGER.debug("%s: D(%d): %s -> %s", id(self), data, self._d_counter, dec)
+        _LOGGER.debug("%s: D(%d): %s -> %s", id(self), self._d_counter, data, dec)
         return dec
