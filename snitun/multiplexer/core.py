@@ -53,13 +53,16 @@ class Multiplexer:
         "_channels",
         "_crypto",
         "_healthy",
+        "_id",
         "_loop",
         "_new_connections",
         "_queue",
         "_ranged_timeout",
+        "_read_count",
         "_read_task",
         "_reader",
         "_throttling",
+        "_write_count",
         "_write_task",
         "_writer",
     ]
@@ -87,6 +90,7 @@ class Multiplexer:
             OUTGOING_QUEUE_HIGH_WATERMARK,
         )
         self._healthy = asyncio.Event()
+        self._id = 0
         self._healthy.set()
         self._read_task = self._loop.create_task(self._read_from_peer_loop())
         self._write_task = self._loop.create_task(self._write_to_peer_loop())
@@ -99,6 +103,8 @@ class Multiplexer:
         self._channels: dict[MultiplexerChannelId, MultiplexerChannel] = {}
         self._new_connections = new_connections
         self._throttling: float | None = None
+        self._read_count = 0
+        self._write_count = 0
         if throttling:
             # If throttling is less than 5ms, change it to
             # 0.0 since asyncio.sleep(0.0) is much more efficient
@@ -222,7 +228,16 @@ class Multiplexer:
             extra + os.urandom(11 - len(extra)),
         )
         try:
+            self._write_count += 1
             encrypted_header = self._crypto.encrypt(header)
+            _LOGGER.debug(
+                "%s: c=%s: write header (%s): enc=%s une=%s",
+                id(self),
+                self._write_count,
+                id_.bytes.hex(),
+                encrypted_header,
+                header,
+            )
             self._writer.write(
                 encrypted_header + data if data_len else encrypted_header,
             )
@@ -231,6 +246,7 @@ class Multiplexer:
 
     async def _read_message(self) -> None:
         """Read message from peer."""
+        self._read_count += 1
         header = await self._reader.readexactly(HEADER_SIZE)
 
         channel_id: bytes
@@ -238,8 +254,17 @@ class Multiplexer:
         data_size: int
         extra: bytes
         try:
+            decrypted_header = self._crypto.decrypt(header)
             channel_id, flow_type, data_size, extra = HEADER_STRUCT.unpack(
-                self._crypto.decrypt(header),
+                decrypted_header
+            )
+            _LOGGER.debug(
+                "%s: c=%s: read header (%s): enc=%s une=%s",
+                id(self),
+                self._read_count,
+                channel_id.hex(),
+                header,
+                decrypted_header,
             )
         except (struct.error, MultiplexerTransportDecrypt):
             _LOGGER.warning("Wrong message header received")
@@ -272,6 +297,11 @@ class Multiplexer:
                 _LOGGER.warning(
                     "Abort connection, channel %s is not healthy",
                     channel.id,
+                )
+                _LOGGER.warning(
+                    "Delete channel %s: decrypt stream: %s",
+                    channel_id,
+                    self._crypto._decrypt_stream,
                 )
                 channel.close()
                 self._create_channel_task(self.delete_channel(channel))
@@ -348,10 +378,14 @@ class Multiplexer:
         pause_resume_reader_callback: Callable[[bool], None],
     ) -> MultiplexerChannel:
         """Create a new channel for transport."""
+        self._id += 1
+        channel_id = struct.pack(">QQ", 0, self._id)
+        assert len(channel_id) == 16
         channel = MultiplexerChannel(
             self._queue,
             ip_address,
             pause_resume_reader_callback,
+            channel_id=MultiplexerChannelId(channel_id),
             throttling=self._throttling,
         )
         message = channel.init_new()
@@ -390,4 +424,5 @@ class Multiplexer:
     ) -> MultiplexerChannel | None:
         """Delete channel and queue from multiplexer if it exists."""
         self._queue.delete_channel(channel_id)
+
         return self._channels.pop(channel_id, None)
