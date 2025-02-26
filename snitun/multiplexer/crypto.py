@@ -50,5 +50,5 @@ class CryptoTransport:
             dec = self._decryptor.update(data)
         except InvalidTag:
             raise MultiplexerTransportDecrypt from None
-        _LOGGER.debug("%s: D(%d): %s -> %s", id(self), self._d_counter, data, dec)
+        _LOGGER.debug("%s: D(%d): %s <- %s", id(self), self._d_counter, dec, data)
         return dec
