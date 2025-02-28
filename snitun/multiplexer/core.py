@@ -32,6 +32,7 @@ from .message import (
     CHANNEL_FLOW_PAUSE,
     CHANNEL_FLOW_PING,
     CHANNEL_FLOW_RESUME,
+    HEADER_SIZE,
     HEADER_STRUCT,
     MultiplexerChannelId,
     MultiplexerMessage,
@@ -59,7 +60,6 @@ class Multiplexer:
         "_read_task",
         "_reader",
         "_throttling",
-        "_timed_out",
         "_write_task",
         "_writer",
     ]
@@ -95,7 +95,6 @@ class Multiplexer:
             PEER_TCP_MAX_TIMEOUT,
             self._on_timeout,
         )
-        self._timed_out: bool = False
         self._channel_tasks: set[asyncio.Task[None]] = set()
         self._channels: dict[MultiplexerChannelId, MultiplexerChannel] = {}
         self._new_connections = new_connections
@@ -114,7 +113,6 @@ class Multiplexer:
 
     def _on_timeout(self) -> None:
         """Handle timeout."""
-        self._timed_out = True
         _LOGGER.error("Timed out reading and writing to peer")
         self._write_task.cancel()
 
@@ -232,7 +230,7 @@ class Multiplexer:
 
     async def _read_message(self) -> None:
         """Read message from peer."""
-        header = await self._reader.readexactly(32)
+        header = await self._reader.readexactly(HEADER_SIZE)
 
         channel_id: bytes
         flow_type: int
@@ -258,10 +256,6 @@ class Multiplexer:
         )
 
         # Process message to queue
-        await self._process_message(message)
-
-    async def _process_message(self, message: MultiplexerMessage) -> None:
-        """Process received message."""
         # DATA
         flow_type = message.flow_type
         if flow_type == CHANNEL_FLOW_DATA:
@@ -274,7 +268,10 @@ class Multiplexer:
             if channel.closing:
                 pass
             elif channel.unhealthy:
-                _LOGGER.warning("Abort connection, channel is not healthy")
+                _LOGGER.warning(
+                    "Abort connection, channel %s is not healthy",
+                    channel.id,
+                )
                 channel.close()
                 self._create_channel_task(self.delete_channel(channel))
             else:
@@ -390,6 +387,6 @@ class Multiplexer:
         self,
         channel_id: MultiplexerChannelId,
     ) -> MultiplexerChannel | None:
-        """Delete channel from transport."""
+        """Delete channel and queue from multiplexer if it exists."""
         self._queue.delete_channel(channel_id)
         return self._channels.pop(channel_id, None)
