@@ -15,7 +15,7 @@ from snitun.multiplexer import (
 from snitun.multiplexer import channel as channel_module, core as core_module
 from snitun.multiplexer import core as multi_core, transport as transport_module
 from snitun.multiplexer.channel import MultiplexerChannel
-from snitun.multiplexer.core import Multiplexer
+from snitun.multiplexer.core import Multiplexer, MIN_SIZE_THROTTLE
 from snitun.multiplexer.crypto import CryptoTransport
 from snitun.multiplexer.message import (
     CHANNEL_FLOW_PAUSE,
@@ -457,10 +457,12 @@ async def test_multiplexer_throttling(
     multiplexer_server._throttling = 0.1
     multiplexer_client._throttling = 0.1
 
+    data = b"x" * MIN_SIZE_THROTTLE
+
     async def _sender() -> None:
         """Send data much as possible."""
         for _ in range(1, 100000):
-            await channel_client.write(b"data")
+            await channel_client.write(data)
 
     async def _receiver() -> None:
         """Receive data much as possible."""
@@ -502,7 +504,8 @@ async def test_multiplexer_core_peer_timeout(
         assert not multiplexer_server._channels
 
         channel_client = await multiplexer_client.create_channel(
-            IP_ADDR, lambda _: None,
+            IP_ADDR,
+            lambda _: None,
         )
 
         await asyncio.sleep(0.1)
