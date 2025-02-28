@@ -71,6 +71,8 @@ class ChannelTransport(Transport):
         self._pause_future: asyncio.Future[None] | None = None
         self._protocol_paused: bool = False
         self._reader_task: asyncio.Task[None] | None = None
+        self._protocol_ready: asyncio.Future[None] = self._loop.create_future()
+        self._protocol_set: bool = False
         self._multiplexer = multiplexer
         peername = str(channel.ip_address) if CHANNEL_IP_IS_CLIENT_IP else "127.0.0.1"
         super().__init__(extra={"peername": (peername, 0)})
@@ -100,7 +102,15 @@ class ChannelTransport(Transport):
         assert isinstance(protocol, asyncio.BufferedProtocol), (
             "Protocol must be a BufferedProtocol"
         )
+        _LOGGER.warning(
+            "Setting protocol for %s (%s)",
+            self._channel.ip_address,
+            self._channel.id,
+        )
         self._protocol = protocol
+        if not self._protocol_ready.done():
+            self._protocol_set = True
+            self._protocol_ready.set_result(None)
 
     def is_closing(self) -> bool:
         """Return True if the transport is closing or closed."""
@@ -119,6 +129,7 @@ class ChannelTransport(Transport):
     def write(self, data: bytes) -> None:
         """Write data to the channel."""
         if not self._channel.closing:
+            _LOGGER.warning("Writing data: %s", len(data))
             self._channel.write_no_wait(data)
 
     def resume_protocol(self) -> None:
@@ -180,6 +191,9 @@ class ChannelTransport(Transport):
             except BaseException as exc:
                 self._fatal_error(exc, "Fatal error: channel.read() call failed.")
                 raise
+
+            if not self._protocol_set:
+                await self._protocol_ready
 
             if TYPE_CHECKING:
                 assert self._protocol is not None, "Protocol not set"
