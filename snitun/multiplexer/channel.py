@@ -134,6 +134,7 @@ class MultiplexerChannel:
 
     def _on_local_output_under_water(self, under_water: bool) -> None:
         """On callback from the output queue when goes under water or recovers."""
+        _LOGGER.debug("Local output is under water: %s for %s", under_water, self._id)
         self._local_output_under_water = under_water
         self._pause_or_resume_reader()
 
@@ -150,6 +151,7 @@ class MultiplexerChannel:
         if self._pause_resume_reader_callback is None:
             return
         pause_reader = self._local_output_under_water or self._remote_input_under_water
+        _LOGGER.warning("Pause or resume reader: %s for %s", pause_reader, self._id)
         if self._reader_paused != pause_reader:
             self._reader_paused = pause_reader
             self._pause_resume_reader_callback(pause_reader)

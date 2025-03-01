@@ -146,7 +146,8 @@ class ChannelTransport(Transport):
             return
         method_name = "pause_writing" if pause else "resume_writing"
         _LOGGER.debug(
-            "Calling protocol.%s() for %s (%s)",
+            "Calling protocol(%s).%s() for %s (%s)",
+            self._protocol.__class__.__name__,
             method_name,
             self._channel.ip_address,
             self._channel.id,
