@@ -129,7 +129,7 @@ class ChannelTransport(Transport):
     def write(self, data: bytes) -> None:
         """Write data to the channel."""
         if not self._channel.closing:
-            _LOGGER.warning("Writing data: %s", len(data))
+            _LOGGER.warning("Writing data to %s: %s", self._channel.id, len(data))
             self._channel.write_no_wait(data)
 
     def resume_protocol(self) -> None:
