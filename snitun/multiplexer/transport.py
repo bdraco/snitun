@@ -28,6 +28,7 @@ _LOGGER = logging.getLogger(__name__)
 # this should be set to False so that the IP continues to present
 # as 127.0.0.1
 CHANNEL_IP_IS_CLIENT_IP = False
+MAX_MESSAGE_SIZE = 32 * 1024
 
 
 def _feed_data_to_buffered_proto(proto: asyncio.BufferedProtocol, data: bytes) -> None:
@@ -41,6 +42,7 @@ def _feed_data_to_buffered_proto(proto: asyncio.BufferedProtocol, data: bytes) -
     the data to be fed to it.
     """
     data_len = len(data)
+    _LOGGER.warning("Feeding data to protocol: %s", data_len)
     while data_len:  # pragma: no branch
         buf = proto.get_buffer(data_len)
         buf_len = len(buf)  # type: ignore[arg-type]
@@ -130,7 +132,17 @@ class ChannelTransport(Transport):
         """Write data to the channel."""
         if not self._channel.closing:
             _LOGGER.warning("Writing data: %s", len(data))
-            self._channel.write_no_wait(data)
+            if (data_len := len(data)) > MAX_MESSAGE_SIZE:
+                _LOGGER.warning("Writing large data: %s", len(data))
+                for i in range(0, data_len, MAX_MESSAGE_SIZE):
+                    _LOGGER.warning(
+                        "Writing partial data: %s",
+                        len(data[i : i + MAX_MESSAGE_SIZE]),
+                    )
+                    self._channel.write_no_wait(data[i : i + MAX_MESSAGE_SIZE])
+            else:
+                self._channel.write_no_wait(data)
+            _LOGGER.warning("Done Writing data: %s", len(data))
 
     def resume_protocol(self) -> None:
         """Resume the protocol."""

@@ -134,6 +134,7 @@ class MultiplexerChannel:
 
     def _on_local_output_under_water(self, under_water: bool) -> None:
         """On callback from the output queue when goes under water or recovers."""
+        _LOGGER.debug("Local output is under water: %s for %s", under_water, self._id)
         self._local_output_under_water = under_water
         self._pause_or_resume_reader()
 
