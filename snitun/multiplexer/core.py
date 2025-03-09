@@ -49,6 +49,11 @@ _LOGGER = logging.getLogger(__name__)
 PEER_TCP_MIN_TIMEOUT = 90
 PEER_TCP_MAX_TIMEOUT = 120
 MIN_SIZE_THROTTLE = 8192
+# If the payload is larger than 8192, use writelines to write the payload
+# to the stream. In Python 3.11+, writelines is a zero-copy operation.
+# For small payloads, the overhead of writelines is higher than the
+# overhead of write, so we only use writelines for larger payloads.
+MAX_PAYLOAD_FOR_WRITE = 8192
 
 
 class Multiplexer:
@@ -245,8 +250,12 @@ class Multiplexer:
         )
         try:
             encrypted_header = self._crypto.encrypt(header)
-            payload = encrypted_header + data if data_len else encrypted_header
-            self._writer.write(payload)
+            if data_len and data_len > MAX_PAYLOAD_FOR_WRITE:
+                self._writer.writelines((encrypted_header, data))
+            elif data_len:
+                self._writer.write(b"".join((encrypted_header, data)))
+            else:
+                self._writer.write(encrypted_header)
         except RuntimeError:
             raise MultiplexerTransportClose from None
         return data_len
