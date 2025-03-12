@@ -22,8 +22,8 @@ import pytest
 from pytest_aiohttp import AiohttpServer
 import trustme
 
-from snitun.client.connector import Connector, ConnectorHandler
 import snitun
+from snitun.client.connector import Connector, ConnectorHandler
 from snitun.multiplexer.channel import MultiplexerChannel
 from snitun.multiplexer.core import Multiplexer
 from snitun.multiplexer.crypto import CryptoTransport
