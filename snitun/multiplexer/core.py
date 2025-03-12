@@ -66,6 +66,8 @@ class Multiplexer:
         "_healthy",
         "_loop",
         "_new_connections",
+        "_peer_protocol_version",
+        "_processing_task",
         "_queue",
         "_ranged_timeout",
         "_read_task",
@@ -80,6 +82,7 @@ class Multiplexer:
         crypto: CryptoTransport,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        peer_protocol_version: int,
         new_connections: Callable[
             [Multiplexer, MultiplexerChannel],
             Coroutine[Any, Any, None],
@@ -91,6 +94,7 @@ class Multiplexer:
         self._crypto = crypto
         self._reader = reader
         self._writer = writer
+        self._peer_protocol_version = peer_protocol_version
         self._loop = asyncio.get_event_loop()
         self._queue = MultiplexerMultiChannelQueue(
             OUTGOING_QUEUE_MAX_BYTES_CHANNEL,
@@ -322,6 +326,7 @@ class Multiplexer:
             channel = MultiplexerChannel(
                 self._queue,
                 ip_address,
+                self._peer_protocol_version,
                 channel_id=message.id,
                 throttling=self._throttling,
             )
@@ -384,6 +389,7 @@ class Multiplexer:
         channel = MultiplexerChannel(
             self._queue,
             ip_address,
+            self._peer_protocol_version,
             pause_resume_reader_callback,
             throttling=self._throttling,
         )
